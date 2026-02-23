@@ -74,6 +74,8 @@ Options:
   --project-root <path>              Root scanned by loop workers (default: current dir)
   --loop-channel <name>              Delivery channel for loop updates (e.g., discord)
   --loop-target <id>                 Delivery target id (channel/thread/user id)
+  --discord-text-channel <id>        Shortcut: --loop-channel discord --loop-target <id>
+  --discord-forum-thread <id>        Shortcut: --loop-channel discord --loop-target <thread_id>
   --loop-agent <id>                  Agent id for loop jobs (default: main)
   --loop-model <id>                  Model id for loop jobs (default: kimi-coding/k2p5)
   --loop-tz <iana_tz>                Timezone for loop jobs (default: UTC)
@@ -103,6 +105,7 @@ Examples:
   ./install.sh --profile workspace --workspace-root /srv/openclaw/workspace
   ./install.sh --profile custom --skill-dir /opt/openclaw/skills --plugin-path /opt/openclaw/plugins/gsd-command-aliases
   ./install.sh --preset badgeid --profile home --enable-ralphclaw --enable-autoclaw --enable-loop-kpi --loop-channel discord --loop-target 1234567890
+  ./install.sh --preset badgeid --enable-ralphclaw --discord-forum-thread 123456789012345678
 USAGE
 }
 
@@ -822,7 +825,17 @@ run_interactive_wizard() {
     fi
     prompt_value LOOP_CHANNEL "Loop delivery channel (blank for no announcements)" "$LOOP_CHANNEL"
     if [[ -n "$LOOP_CHANNEL" ]]; then
-      prompt_value LOOP_TARGET "Loop delivery target id" "${LOOP_TARGET:-}"
+      if [[ "$LOOP_CHANNEL" == "discord" ]]; then
+        local discord_target_mode="text-channel"
+        prompt_choice discord_target_mode "Discord target type" "$discord_target_mode" "text-channel" "forum-thread"
+        if [[ "$discord_target_mode" == "forum-thread" ]]; then
+          prompt_value LOOP_TARGET "Discord forum thread id" "${LOOP_TARGET:-}"
+        else
+          prompt_value LOOP_TARGET "Discord text channel id" "${LOOP_TARGET:-}"
+        fi
+      else
+        prompt_value LOOP_TARGET "Loop delivery target id" "${LOOP_TARGET:-}"
+      fi
       if [[ -z "$LOOP_TARGET" ]]; then
         prompt_yes_no ALLOW_NO_LOOP_DELIVERY "No delivery target set. Continue without announcements?" 0
       fi
@@ -1018,6 +1031,8 @@ while [[ $# -gt 0 ]]; do
     --project-root) PROJECT_ROOT="${2:-}"; PROJECT_ROOT_SET=1; shift 2 ;;
     --loop-channel) LOOP_CHANNEL="${2:-}"; shift 2 ;;
     --loop-target) LOOP_TARGET="${2:-}"; LOOP_TARGET_SET=1; shift 2 ;;
+    --discord-text-channel) LOOP_CHANNEL="discord"; LOOP_TARGET="${2:-}"; LOOP_TARGET_SET=1; shift 2 ;;
+    --discord-forum-thread) LOOP_CHANNEL="discord"; LOOP_TARGET="${2:-}"; LOOP_TARGET_SET=1; shift 2 ;;
     --loop-agent) LOOP_AGENT="${2:-}"; shift 2 ;;
     --loop-model) LOOP_MODEL="${2:-}"; shift 2 ;;
     --loop-tz) LOOP_TZ="${2:-}"; LOOP_TZ_SET=1; shift 2 ;;
@@ -1168,5 +1183,6 @@ Loop mode (optional):
   --ralphclaw-multi-agent (parallel: $RALPHCLAW_SUBAGENTS_PARALLEL)
   --ralphclaw-subagents-parallel <n>
   --loop-channel/--loop-target for announcements
+  --discord-text-channel <id> or --discord-forum-thread <id> as shortcuts
   --allow-no-loop-delivery (if you intentionally run silently)
 NEXT

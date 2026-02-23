@@ -73,7 +73,6 @@ This suite combines three layers:
 - Defines planning, execution, verification discipline.
 
 2. `AutoClaw` (discovery/extension loop)
-- Sometimes referred to as "AutoClaude" in chat.
 - Finds and shapes valuable next work (features, quality, reliability).
 - Writes structured proposals into the shared inbox/queue contract.
 
@@ -158,8 +157,7 @@ Enable autonomous loops during install:
   --enable-loop-kpi \
   --ralphclaw-multi-agent \
   --ralphclaw-subagents-parallel 3 \
-  --loop-channel discord \
-  --loop-target <discord_channel_or_thread_id>
+  --discord-text-channel <discord_channel_id>
 ```
 
 ### 2) Workspace Profile (repo-centric setups)
@@ -206,6 +204,11 @@ Installer can also configure cron workers for autonomous execution:
 - `RalphClaw Watchdog` (default: every 20 min) for stale-loop recovery
 - `Loop KPI Weekly` (default: Mondays 08:00) for delivery/blocker reporting
 
+Cron frequency is configurable:
+- `--ralphclaw-cron "<expr>"` (default: `*/15 * * * *`)
+- `--autoclaw-cron "<expr>"` (default: `0 */3 * * *`)
+- `--loop-kpi-cron "<expr>"` (default: `0 8 * * 1`)
+
 Interactive:
 
 ```bash
@@ -231,8 +234,17 @@ Advanced flags:
   --ralphclaw-cron "*/15 * * * *" \
   --autoclaw-cron "0 */3 * * *" \
   --loop-kpi-cron "0 8 * * 1" \
-  --loop-channel discord \
-  --loop-target <target_id>
+  --discord-text-channel <channel_id>
+```
+
+Discord forum thread delivery:
+
+```bash
+./install.sh \
+  --preset badgeid \
+  --enable-ralphclaw \
+  --enable-autoclaw \
+  --discord-forum-thread <forum_thread_id>
 ```
 
 Legacy aliases supported:
@@ -249,6 +261,11 @@ Useful defaults:
 Delivery guardrail:
 - Loop jobs require `--loop-target` when delivery channel is set.
 - Use `--allow-no-loop-delivery` only if silent execution is intentional.
+
+Discord delivery shortcuts:
+- Text channel: `--discord-text-channel <channel_id>`
+- Forum thread: `--discord-forum-thread <thread_id>`
+- Generic form still works: `--loop-channel discord --loop-target <id>`
 
 RalphClaw multi-agent:
 - Enable with `--ralphclaw-multi-agent`
