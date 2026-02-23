@@ -176,8 +176,8 @@ if [[ ! -d "$ROOT_DIR/.git" ]]; then
 fi
 
 if [[ "$ALLOW_DIRTY" -eq 0 ]]; then
-  if [[ -n "$(git -C "$ROOT_DIR" status --porcelain)" ]]; then
-    echo "[update][error] Working tree is dirty. Commit/stash first, or pass --allow-dirty." >&2
+  if [[ -n "$(git -C "$ROOT_DIR" status --porcelain --untracked-files=no)" ]]; then
+    echo "[update][error] Working tree has tracked modifications. Commit/stash first, or pass --allow-dirty." >&2
     exit 1
   fi
 fi
