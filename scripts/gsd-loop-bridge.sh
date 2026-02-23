@@ -168,12 +168,11 @@ for todo in todos[:max_items]:
     path = clean(str(todo.get("path") or ""))
     title = clean(str(todo.get("title") or "Untitled"))
     area = clean(str(todo.get("area") or "general"))
-    created = clean(str(todo.get("created") or ""))
     source = file_name or path or title
     if source.lower().endswith(".md"):
         source = source[:-3]
     item_id = f"GSD-TODO-{safe_slug(source)}"
-    fields = [item_id, title, area, path, created]
+    fields = [item_id, title, area, path]
     print("\t".join(fields))
 PY
 
@@ -233,7 +232,7 @@ if [[ "$ROADMAP_EXISTS" -eq 1 ]]; then
   default_action="/gsd-resume-work"
 fi
 
-while IFS=$'\t' read -r id title area path created; do
+while IFS=$'\t' read -r id title area path; do
   [[ -n "$id" ]] || continue
   DISCOVERED=$((DISCOVERED + 1))
 

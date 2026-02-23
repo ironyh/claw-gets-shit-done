@@ -19,6 +19,8 @@ Claw Gets Shit Done (CGSD) is an OpenClaw bundle that combines:
 - full install and update lifecycle
 - build and release process
 - installer/runtime configuration
+- command and alias reference
+- system architecture and data flow
 - Discord forum discussion flow (daily + weekly councils)
 - operational troubleshooting
 - concrete proposal backlog for next improvements
@@ -28,10 +30,18 @@ Claw Gets Shit Done (CGSD) is an OpenClaw bundle that combines:
 - Install and update: [Install & Update](install-update.md)
 - Build process: [Build & Release](build-release.md)
 - Flags and defaults: [Configuration](configuration.md)
+- Command map: [Command Reference](command-reference.md)
+- System model: [Architecture](architecture.md)
 - Forum governance: [Discord Forum Flow](discord-forum-flow.md)
 - Improvement ideas: [Proposals](proposals.md)
 - Runtime troubleshooting: [Operations](operations.md)
+- Common issues: [FAQ](faq.md)
 - Published docs: <https://ironyh.github.io/claw-gets-shit-done/>
+
+## Search
+
+Search is built into the docs site (`plugins: search` in `mkdocs.yml`).
+Use it to jump directly to flags, commands, and troubleshooting entries.
 
 ## Source of Truth
 

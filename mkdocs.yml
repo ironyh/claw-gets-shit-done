@@ -9,12 +9,22 @@ theme:
 
 nav:
   - Overview: index.md
-  - Install & Update: install-update.md
-  - Build & Release: build-release.md
-  - Configuration: configuration.md
-  - Discord Forum Flow: discord-forum-flow.md
-  - Proposals: proposals.md
-  - Operations: operations.md
+  - Getting Started:
+      - Install & Update: install-update.md
+      - Configuration: configuration.md
+      - Command Reference: command-reference.md
+  - Workflows:
+      - Discord Forum Flow: discord-forum-flow.md
+      - Architecture: architecture.md
+  - Operations:
+      - Runbook: operations.md
+      - Build & Release: build-release.md
+      - FAQ: faq.md
+  - Roadmap:
+      - Proposals: proposals.md
+
+plugins:
+  - search
 
 markdown_extensions:
   - tables

@@ -57,15 +57,38 @@ check_warn() {
   warn=$((warn + 1))
 }
 
-[[ -d "$SKILL_PATH" ]] && check_ok "Skill installed: $SKILL_PATH" || check_warn "Missing skill: $SKILL_PATH"
-[[ -x "$GSD_TOOLS" ]] && check_ok "gsd-tools executable: $GSD_TOOLS" || check_warn "Missing gsd-tools executable: $GSD_TOOLS"
-[[ -d "$PLUGIN_PATH" ]] && check_ok "Plugin installed: $PLUGIN_PATH" || check_warn "Missing plugin: $PLUGIN_PATH"
+if [[ -d "$SKILL_PATH" ]]; then
+  check_ok "Skill installed: $SKILL_PATH"
+else
+  check_warn "Missing skill: $SKILL_PATH"
+fi
+
+if [[ -x "$GSD_TOOLS" ]]; then
+  check_ok "gsd-tools executable: $GSD_TOOLS"
+else
+  check_warn "Missing gsd-tools executable: $GSD_TOOLS"
+fi
+
+if [[ -d "$PLUGIN_PATH" ]]; then
+  check_ok "Plugin installed: $PLUGIN_PATH"
+else
+  check_warn "Missing plugin: $PLUGIN_PATH"
+fi
 
 if [[ -f "$CONFIG_PATH" ]] && command -v jq >/dev/null 2>&1; then
   in_paths="$(jq -r --arg p "$PLUGIN_PATH" '((.plugins.load.paths // []) | index($p)) != null' "$CONFIG_PATH" 2>/dev/null || echo false)"
   enabled="$(jq -r '.plugins.entries["gsd-command-aliases"].enabled // false' "$CONFIG_PATH" 2>/dev/null || echo false)"
-  [[ "$in_paths" == "true" ]] && check_ok "Plugin load path configured" || check_warn "Plugin path not found in config load.paths"
-  [[ "$enabled" == "true" ]] && check_ok "Plugin enabled in config" || check_warn "Plugin not enabled in config"
+  if [[ "$in_paths" == "true" ]]; then
+    check_ok "Plugin load path configured"
+  else
+    check_warn "Plugin path not found in config load.paths"
+  fi
+
+  if [[ "$enabled" == "true" ]]; then
+    check_ok "Plugin enabled in config"
+  else
+    check_warn "Plugin not enabled in config"
+  fi
 else
   check_warn "Cannot validate config (missing jq or config file): $CONFIG_PATH"
 fi

@@ -54,14 +54,7 @@ LOOP_INBOX_FILE="${LOOP_INBOX_FILE:-}"
 LOOP_QUEUE_FILE="${LOOP_QUEUE_FILE:-}"
 LOOP_KPI_FILE="${LOOP_KPI_FILE:-}"
 LOOP_LOCK_FILE="${LOOP_LOCK_FILE:-}"
-PROJECT_ROOT_SET=0
-PROJECT_KEY_SET=0
 PROJECT_ROOT_CONFIRMED="$PROJECT_ROOT_FROM_ENV"
-LOOP_TARGET_SET=0
-LOOP_TZ_SET=0
-LOOP_INBOX_FILE_SET=0
-LOOP_QUEUE_FILE_SET=0
-LOOP_KPI_FILE_SET=0
 
 usage() {
   cat <<USAGE
@@ -1166,7 +1159,6 @@ run_interactive_wizard() {
     PROJECT_ROOT_CONFIRMED=1
     resolve_loop_project_identity
     prompt_value PROJECT_KEY "Loop project key (for namespaced cron job names)" "$PROJECT_KEY"
-    PROJECT_KEY_SET=1
     resolve_loop_project_identity
     resolve_default_loop_files
     prompt_value LOOP_INBOX_FILE "Loop inbox file (AutoClaw proposals)" "$LOOP_INBOX_FILE"
@@ -1533,16 +1525,16 @@ while [[ $# -gt 0 ]]; do
     --enable-ralphclaw-watchdog) ENABLE_AUTOLOOP_WATCHDOG=1; shift ;;
     --enable-forum-daily-council) ENABLE_FORUM_DAILY_COUNCIL=1; shift ;;
     --enable-forum-weekly-council) ENABLE_FORUM_WEEKLY_COUNCIL=1; shift ;;
-    --project-root) PROJECT_ROOT="${2:-}"; PROJECT_ROOT_SET=1; PROJECT_ROOT_CONFIRMED=1; shift 2 ;;
-    --project-key) PROJECT_KEY="${2:-}"; PROJECT_KEY_SET=1; shift 2 ;;
+    --project-root) PROJECT_ROOT="${2:-}"; PROJECT_ROOT_CONFIRMED=1; shift 2 ;;
+    --project-key) PROJECT_KEY="${2:-}"; shift 2 ;;
     --loop-channel) LOOP_CHANNEL="${2:-}"; shift 2 ;;
-    --loop-target) LOOP_TARGET="${2:-}"; LOOP_TARGET_SET=1; shift 2 ;;
-    --discord-text-channel) LOOP_CHANNEL="discord"; LOOP_TARGET="${2:-}"; LOOP_TARGET_SET=1; shift 2 ;;
-    --discord-forum-thread) LOOP_CHANNEL="discord"; LOOP_TARGET="${2:-}"; LOOP_TARGET_SET=1; shift 2 ;;
+    --loop-target) LOOP_TARGET="${2:-}"; shift 2 ;;
+    --discord-text-channel) LOOP_CHANNEL="discord"; LOOP_TARGET="${2:-}"; shift 2 ;;
+    --discord-forum-thread) LOOP_CHANNEL="discord"; LOOP_TARGET="${2:-}"; shift 2 ;;
     --discord-forum-target) DISCORD_FORUM_TARGET="${2:-}"; shift 2 ;;
     --loop-agent) LOOP_AGENT="${2:-}"; shift 2 ;;
     --loop-model) LOOP_MODEL="${2:-}"; shift 2 ;;
-    --loop-tz) LOOP_TZ="${2:-}"; LOOP_TZ_SET=1; shift 2 ;;
+    --loop-tz) LOOP_TZ="${2:-}"; shift 2 ;;
     --loop-max-files) LOOP_MAX_FILES="${2:-}"; shift 2 ;;
     --ralphclaw-multi-agent) ENABLE_RALPHCLAW_MULTI_AGENT=1; shift ;;
     --ralphclaw-subagents-parallel) RALPHCLAW_SUBAGENTS_PARALLEL="${2:-}"; shift 2 ;;
@@ -1553,9 +1545,9 @@ while [[ $# -gt 0 ]]; do
     --gsd-bridge-cron) GSD_BRIDGE_CRON="${2:-}"; shift 2 ;;
     --forum-daily-cron) FORUM_DAILY_CRON="${2:-}"; shift 2 ;;
     --forum-weekly-cron) FORUM_WEEKLY_CRON="${2:-}"; shift 2 ;;
-    --loop-inbox-file) LOOP_INBOX_FILE="${2:-}"; LOOP_INBOX_FILE_SET=1; shift 2 ;;
-    --loop-queue-file) LOOP_QUEUE_FILE="${2:-}"; LOOP_QUEUE_FILE_SET=1; shift 2 ;;
-    --loop-kpi-file) LOOP_KPI_FILE="${2:-}"; LOOP_KPI_FILE_SET=1; shift 2 ;;
+    --loop-inbox-file) LOOP_INBOX_FILE="${2:-}"; shift 2 ;;
+    --loop-queue-file) LOOP_QUEUE_FILE="${2:-}"; shift 2 ;;
+    --loop-kpi-file) LOOP_KPI_FILE="${2:-}"; shift 2 ;;
     --loop-lock-file) LOOP_LOCK_FILE="${2:-}"; shift 2 ;;
     --no-dedupe-crons) DEDUPE_CRON_JOBS=0; shift ;;
     --no-dedupe-plugin-paths) DEDUPE_PLUGIN_PATHS=0; shift ;;

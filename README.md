@@ -16,9 +16,19 @@ This bundle is built to handle different OpenClaw setups (home dirs, workspace i
 - Local docs index: `docs/index.md`
 - Install/update guide: `docs/install-update.md`
 - Configuration reference: `docs/configuration.md`
+- Command reference: `docs/command-reference.md`
+- Architecture: `docs/architecture.md`
 - Discord forum flow: `docs/discord-forum-flow.md`
 - Operations/troubleshooting: `docs/operations.md`
 - Build/release guide: `docs/build-release.md`
+- FAQ: `docs/faq.md`
+
+Local searchable preview:
+
+```bash
+pip install -r requirements-docs.txt
+mkdocs serve
+```
 
 ## Install From Repo URL (Agent-Friendly)
 

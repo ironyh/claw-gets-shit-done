@@ -1,0 +1,4 @@
+site/
+dist/
+*.Zone.Identifier
+*:Zone.Identifier
