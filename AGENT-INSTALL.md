@@ -81,6 +81,7 @@ After install, run:
 openclaw gateway health
 Then follow installer bootstrap hint:
 - brownfield: /gsd-map-codebase -> /gsd-new-project
+- empty project: /gsd-new-project
 - greenfield: /gsd-new-project
 Return a concise status report including any blockers.
 ```
@@ -94,3 +95,8 @@ Run interactive installer:
 ```
 
 This prompts for only what is needed and supports mixed OpenClaw install layouts.
+
+Guided bootstrap behavior:
+- Installer auto-detects `existing`, `brownfield`, `empty`, `greenfield`.
+- If not `existing`, it asks which bootstrap strategy to use.
+- Non-interactive override: `--gsd-bootstrap auto|skip|new-project|new-project-auto|map-then-new-project`.

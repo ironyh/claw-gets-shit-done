@@ -54,6 +54,10 @@ For existing codebases, run:
 1. `/gsd-map-codebase`
 2. `/gsd-new-project`
 
+For empty project directories:
+
+- `/gsd-new-project`
+
 For greenfield with an idea document, you can use:
 
 - `/gsd-new-project --auto @PROJECT_IDEA.md`

@@ -35,6 +35,7 @@ LOOP_CHANNEL="${LOOP_CHANNEL:-discord}"
 LOOP_TARGET="${LOOP_TARGET:-}"
 DISCORD_FORUM_TARGET="${DISCORD_FORUM_TARGET:-}"
 DISCORD_SLASH_ALLOW_FROM="${DISCORD_SLASH_ALLOW_FROM:-*}"
+GSD_BOOTSTRAP_MODE="${GSD_BOOTSTRAP_MODE:-auto}"
 LOOP_AGENT="${LOOP_AGENT:-main}"
 LOOP_MODEL="${LOOP_MODEL:-kimi-coding/k2p5}"
 LOOP_TZ="${LOOP_TZ:-UTC}"
@@ -87,6 +88,7 @@ Options:
   --discord-forum-thread <id>        Shortcut: --loop-channel discord --loop-target <thread_id>
   --discord-forum-target <id>        Discord forum channel target for /gsd-new-epic thread creation (auto-detected if omitted, best effort)
   --discord-slash-allow-from <id|*>  Add Discord slash-command sender allowlist entry (default: *)
+  --gsd-bootstrap <mode>             GSD bootstrap hint mode: auto|skip|new-project|new-project-auto|map-then-new-project
   --loop-agent <id>                  Agent id for loop jobs (default: main)
   --loop-model <id>                  Model id for loop jobs (default: kimi-coding/k2p5)
   --loop-tz <iana_tz>                Timezone for loop jobs (default: UTC)
@@ -480,6 +482,111 @@ detect_local_tz() {
     tz="UTC"
   fi
   printf '%s' "$tz"
+}
+
+detect_gsd_bootstrap_context() {
+  local project_root="$1"
+  local gsd_tools="$2"
+
+  [[ -d "$project_root" ]] || return 1
+  [[ -x "$gsd_tools" ]] || return 1
+  command -v python3 >/dev/null 2>&1 || return 1
+
+  local init_json
+  init_json="$(cd "$project_root" && "$gsd_tools" init new-project --raw 2>/dev/null || true)"
+  [[ -n "$init_json" ]] || return 1
+
+  python3 - "$project_root" "$init_json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+project_root = Path(sys.argv[1])
+raw = sys.argv[2]
+
+try:
+    data = json.loads(raw)
+except Exception:
+    raise SystemExit(1)
+
+if not isinstance(data, dict):
+    raise SystemExit(1)
+
+ignored_entries = {".git", ".openclaw", ".DS_Store"}
+try:
+    visible_entries = [p for p in project_root.iterdir() if p.name not in ignored_entries]
+except Exception:
+    visible_entries = []
+
+if bool(data.get("project_exists")):
+    kind = "existing"
+elif bool(data.get("needs_codebase_map")) or bool(data.get("is_brownfield")):
+    kind = "brownfield"
+elif len(visible_entries) == 0:
+    kind = "empty"
+else:
+    kind = "greenfield"
+
+idea_files = [
+    project_root / "PROJECT_IDEA.md",
+    project_root / "IDEA.md",
+    project_root / "PRD.md",
+]
+idea_file = next((p.name for p in idea_files if p.exists()), "")
+
+print(kind)
+print(idea_file)
+PY
+}
+
+prompt_gsd_bootstrap_mode() {
+  local project_root="$1"
+  local gsd_tools="$2"
+  local parsed=""
+  parsed="$(detect_gsd_bootstrap_context "$project_root" "$gsd_tools" || true)"
+  [[ -n "$parsed" ]] || return 0
+
+  local kind="" idea_file=""
+  kind="$(printf '%s\n' "$parsed" | sed -n '1p')"
+  idea_file="$(printf '%s\n' "$parsed" | sed -n '2p')"
+
+  if [[ "$kind" == "existing" ]]; then
+    GSD_BOOTSTRAP_MODE="skip"
+    return 0
+  fi
+
+  local choice="$GSD_BOOTSTRAP_MODE"
+  if [[ "$kind" == "brownfield" ]]; then
+    prompt_choice choice \
+      "GSD bootstrap strategy (detected brownfield codebase)" \
+      "map-then-new-project" \
+      "map-then-new-project" \
+      "new-project" \
+      "skip"
+  elif [[ "$kind" == "empty" ]]; then
+    prompt_choice choice \
+      "GSD bootstrap strategy (detected empty project directory)" \
+      "new-project" \
+      "new-project" \
+      "skip"
+  else
+    if [[ -n "$idea_file" ]]; then
+      prompt_choice choice \
+        "GSD bootstrap strategy (detected greenfield; found $idea_file)" \
+        "new-project-auto" \
+        "new-project-auto" \
+        "new-project" \
+        "skip"
+    else
+      prompt_choice choice \
+        "GSD bootstrap strategy (detected greenfield)" \
+        "new-project" \
+        "new-project" \
+        "skip"
+    fi
+  fi
+
+  GSD_BOOTSTRAP_MODE="$choice"
 }
 
 derive_project_key() {
@@ -1290,6 +1397,11 @@ run_interactive_wizard() {
     fi
   fi
 
+  local gsd_tools_hint="$BUNDLE_DIR/skills/claw-gets-shit-done/bin/gsd-tools"
+  if [[ -d "${PROJECT_ROOT:-}" ]]; then
+    prompt_gsd_bootstrap_mode "$PROJECT_ROOT" "$gsd_tools_hint"
+  fi
+
   cat <<SUMMARY
 
 [install] Interactive summary
@@ -1312,6 +1424,7 @@ run_interactive_wizard() {
   loop target: ${LOOP_TARGET:-<none>}
   discord forum target: ${DISCORD_FORUM_TARGET:-<none>}
   discord slash allowFrom: ${DISCORD_SLASH_ALLOW_FROM:-<none>}
+  gsd bootstrap mode: ${GSD_BOOTSTRAP_MODE:-auto}
   loop lock file: ${LOOP_LOCK_FILE:-<auto>}
   allow no loop delivery: $ALLOW_NO_LOOP_DELIVERY
   loop max files: $LOOP_MAX_FILES
@@ -1502,6 +1615,9 @@ build_saved_install_args() {
   if [[ -n "$DISCORD_SLASH_ALLOW_FROM" ]]; then
     _out_ref+=(--discord-slash-allow-from "$DISCORD_SLASH_ALLOW_FROM")
   fi
+  if [[ -n "$GSD_BOOTSTRAP_MODE" && "$GSD_BOOTSTRAP_MODE" != "auto" ]]; then
+    _out_ref+=(--gsd-bootstrap "$GSD_BOOTSTRAP_MODE")
+  fi
 
   local loops_enabled=0
   if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
@@ -1603,59 +1719,59 @@ PY
 print_gsd_bootstrap_guidance() {
   local project_root="$1"
   local gsd_tools="$2"
+  local parsed=""
+  parsed="$(detect_gsd_bootstrap_context "$project_root" "$gsd_tools" || true)"
+  [[ -n "$parsed" ]] || return 0
 
-  [[ -d "$project_root" ]] || return 0
-  [[ -x "$gsd_tools" ]] || return 0
-  command -v python3 >/dev/null 2>&1 || return 0
+  local kind="" idea_file=""
+  kind="$(printf '%s\n' "$parsed" | sed -n '1p')"
+  idea_file="$(printf '%s\n' "$parsed" | sed -n '2p')"
 
-  local init_json
-  init_json="$(cd "$project_root" && "$gsd_tools" init new-project --raw 2>/dev/null || true)"
-  [[ -n "$init_json" ]] || return 0
+  case "$GSD_BOOTSTRAP_MODE" in
+    skip)
+      printf '%s\n' "[install] GSD bootstrap: skipped by config (--gsd-bootstrap skip)."
+      return 0
+      ;;
+    map-then-new-project)
+      printf '%s\n' "[install] GSD bootstrap (forced):"
+      printf '%s\n' "  1) /gsd-map-codebase"
+      printf '%s\n' "  2) /gsd-new-project"
+      return 0
+      ;;
+    new-project)
+      printf '%s\n' "[install] GSD bootstrap (forced): /gsd-new-project"
+      return 0
+      ;;
+    new-project-auto)
+      if [[ -n "$idea_file" ]]; then
+        printf '%s\n' "[install] GSD bootstrap (forced): /gsd-new-project --auto @$idea_file"
+      else
+        printf '%s\n' "[install] GSD bootstrap (forced): /gsd-new-project (no PROJECT_IDEA.md/IDEA.md/PRD.md found)"
+      fi
+      return 0
+      ;;
+    auto)
+      ;;
+    *)
+      warn "Unknown --gsd-bootstrap mode '$GSD_BOOTSTRAP_MODE'; falling back to auto."
+      ;;
+  esac
 
-  local guidance
-  guidance="$(
-    python3 - "$project_root" "$init_json" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-project_root = Path(sys.argv[1])
-raw = sys.argv[2]
-
-try:
-    data = json.loads(raw)
-except Exception:
-    sys.exit(0)
-
-if not isinstance(data, dict):
-    sys.exit(0)
-
-project_exists = bool(data.get("project_exists"))
-needs_codebase_map = bool(data.get("needs_codebase_map"))
-is_brownfield = bool(data.get("is_brownfield"))
-
-idea_files = [
-    project_root / "PROJECT_IDEA.md",
-    project_root / "IDEA.md",
-    project_root / "PRD.md",
-]
-idea_file = next((p.name for p in idea_files if p.exists()), "")
-
-if project_exists:
-    print("[install] GSD bootstrap: existing .planning detected (skipping init guidance).")
-elif needs_codebase_map or is_brownfield:
-    print("[install] GSD bootstrap (brownfield):")
-    print("  1) /gsd-map-codebase")
-    print("  2) /gsd-new-project")
-else:
-    if idea_file:
-        print(f"[install] GSD bootstrap (greenfield): /gsd-new-project --auto @{idea_file}")
-    else:
-        print("[install] GSD bootstrap (greenfield): /gsd-new-project")
-PY
-  )"
-
-  [[ -n "$guidance" ]] && printf '%s\n' "$guidance"
+  if [[ "$kind" == "existing" ]]; then
+    printf '%s\n' "[install] GSD bootstrap: existing .planning detected (skip)."
+  elif [[ "$kind" == "brownfield" ]]; then
+    printf '%s\n' "[install] GSD bootstrap (brownfield):"
+    printf '%s\n' "  1) /gsd-map-codebase"
+    printf '%s\n' "  2) /gsd-new-project"
+  elif [[ "$kind" == "empty" ]]; then
+    printf '%s\n' "[install] GSD bootstrap (empty project): /gsd-new-project"
+  else
+    if [[ -n "$idea_file" ]]; then
+      printf '%s\n' "[install] GSD bootstrap (greenfield): /gsd-new-project --auto @$idea_file"
+    else
+      printf '%s\n' "[install] GSD bootstrap (greenfield): /gsd-new-project"
+    fi
+  fi
 }
 
 while [[ $# -gt 0 ]]; do
@@ -1683,6 +1799,7 @@ while [[ $# -gt 0 ]]; do
     --discord-forum-thread) LOOP_CHANNEL="discord"; LOOP_TARGET="${2:-}"; shift 2 ;;
     --discord-forum-target) DISCORD_FORUM_TARGET="${2:-}"; shift 2 ;;
     --discord-slash-allow-from) DISCORD_SLASH_ALLOW_FROM="${2:-}"; shift 2 ;;
+    --gsd-bootstrap) GSD_BOOTSTRAP_MODE="${2:-}"; shift 2 ;;
     --loop-agent) LOOP_AGENT="${2:-}"; shift 2 ;;
     --loop-model) LOOP_MODEL="${2:-}"; shift 2 ;;
     --loop-tz) LOOP_TZ="${2:-}"; shift 2 ;;
@@ -1752,6 +1869,11 @@ esac
 case "$MODE" in
   copy|symlink) ;;
   *) fail "Invalid mode: $MODE" ;;
+esac
+
+case "$GSD_BOOTSTRAP_MODE" in
+  auto|skip|new-project|new-project-auto|map-then-new-project) ;;
+  *) fail "Invalid --gsd-bootstrap mode: $GSD_BOOTSTRAP_MODE (use auto|skip|new-project|new-project-auto|map-then-new-project)" ;;
 esac
 
 if [[ "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 && "$ENABLE_AUTOLOOP" -eq 0 ]]; then

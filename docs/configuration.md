@@ -31,6 +31,12 @@
 - `--project-root <path>` is required when autonomous jobs are enabled.
 - `--project-key <slug>` overrides job namespace labels.
 - `--loop-inbox-file`, `--loop-queue-file`, `--loop-kpi-file` override default artifact paths.
+- `--gsd-bootstrap <mode>` controls bootstrap hint behavior:
+  - `auto` (detect existing/brownfield/empty/greenfield)
+  - `skip`
+  - `new-project`
+  - `new-project-auto`
+  - `map-then-new-project`
 
 ## Delivery
 

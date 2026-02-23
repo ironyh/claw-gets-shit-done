@@ -35,9 +35,21 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ironyh/claw-gets-shit-done/m
 
 ## GSD Bootstrap (Brownfield vs Greenfield)
 
-After install, CGSD prints recommended first GSD command based on project state:
+In interactive walkthrough, CGSD first detects project state and then asks how bootstrap should run.
+You can override this explicitly with `--gsd-bootstrap <mode>`.
 
+Modes:
+- `auto` (default)
+- `skip`
+- `new-project`
+- `new-project-auto`
+- `map-then-new-project`
+
+After install, CGSD prints recommended first GSD command based on detected state:
+
+- Existing GSD project (`.planning/PROJECT.md`): skip bootstrap
 - Brownfield (existing code without map): `/gsd-map-codebase` then `/gsd-new-project`
+- Empty project directory: `/gsd-new-project`
 - Greenfield: `/gsd-new-project`
 - Greenfield with `PROJECT_IDEA.md`/`IDEA.md`/`PRD.md`: `/gsd-new-project --auto @<file>`
 

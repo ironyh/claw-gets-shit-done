@@ -45,6 +45,7 @@ Behavior:
 - If run in a TTY with no flags, it launches `./install.sh --interactive`.
 - If flags are passed, it runs non-interactive with those flags.
 - It only asks for missing required inputs (for example project root for loops, delivery target, or desired sub-agent parallelism).
+- In guided mode, installer detects project state (`existing`, `brownfield`, `empty`, `greenfield`) and asks for bootstrap strategy when relevant.
 
 Non-interactive example:
 
@@ -116,6 +117,7 @@ Enable RalphClaw + AutoClaw + watchdog.
 If Discord is used, add --discord-slash-allow-from "*".
 Then follow installer bootstrap hint:
 - brownfield: /gsd-map-codebase -> /gsd-new-project
+- empty project: /gsd-new-project
 - greenfield: /gsd-new-project
 After install run doctor + gateway health and report results.
 ```
@@ -322,9 +324,12 @@ Installer shortcut:
 - If omitted, installer attempts best-effort autodetect from existing config and Discord group directory.
 
 Brownfield bootstrap:
-- Installer now prints first-step guidance based on GSD init context:
+- Installer now detects project state and prints first-step guidance based on GSD init context:
+  - Existing GSD project (`.planning/PROJECT.md`): skip bootstrap
   - Brownfield detected: run `/gsd-map-codebase` then `/gsd-new-project`
+  - Empty project directory: run `/gsd-new-project`
   - Greenfield: run `/gsd-new-project` (or `--auto @PROJECT_IDEA.md` when present)
+- Optional override: `--gsd-bootstrap auto|skip|new-project|new-project-auto|map-then-new-project`
 
 ## Autonomous Feature Extension (Optional)
 
@@ -379,6 +384,7 @@ Advanced flags:
   --loop-tz Europe/Stockholm \
   --loop-max-files 12 \
   --loop-lock-file /path/to/workspace-or-project/.openclaw/locks/loop-worker.lock \
+  --gsd-bootstrap auto \
   --ralphclaw-cron "*/15 * * * *" \
   --autoclaw-cron "0 */3 * * *" \
   --loop-kpi-cron "0 8 * * 1" \
