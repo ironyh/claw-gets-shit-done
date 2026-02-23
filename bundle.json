@@ -1,6 +1,6 @@
 {
   "name": "openclaw-gsd-suite",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "components": {
     "skill": "skills/claw-gets-shit-done",
     "plugin": "plugins/gsd-command-aliases"

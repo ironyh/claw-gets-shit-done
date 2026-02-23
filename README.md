@@ -94,6 +94,7 @@ Install CGSD from https://github.com/ironyh/claw-gets-shit-done with:
 --project-root /path/to/project
 --enable-ralphclaw --ralphclaw-multi-agent --ralphclaw-subagents-parallel 3
 --enable-autoclaw --enable-ralphclaw-watchdog --enable-loop-kpi
+--enable-forum-daily-council --enable-forum-weekly-council
 --loop-channel discord --loop-target <target_id>
 Then run doctor + gateway health.
 ```
@@ -144,6 +145,25 @@ Flow:
 - `Loop KPI Weekly`:
   - generates a weekly report from queue + git signal
   - tracks delivery/blocked/test-health trends
+
+### Forum Flow v2 (Daily + Weekly)
+
+- `Forum Council Daily`:
+  - enforces intake card per active thread
+  - prioritizes user-originated input first (bugs/requests/pain reports)
+  - runs timeboxed role discussion (input, challenge, converge)
+  - requires explicit decision gate: `promote_to_queue | need_more_data | reject`
+  - promotes only concrete, testable items to `LOOP-QUEUE`
+- `Forum Council Weekly`:
+  - reviews 7-day thread outcomes, blockers, delivery signals
+  - reviews user-signal trends and repeated pain points
+  - sets next-week priorities and risk mitigations
+  - keeps queue focused on measurable outcomes
+
+Role ping guardrails (in council prompts):
+- allowed: `needs_input_from:<role> reason:"..."`
+- summary required before ping
+- max 2 role-to-role pings per role/thread per daily run
 
 ## What You Get
 
@@ -238,6 +258,8 @@ Installer can also configure cron workers for autonomous execution:
 - `AutoClaw` (default schedule: `0 */3 * * *`) for autonomous feature extension
 - `RalphClaw Watchdog` (default: every 20 min) for stale-loop recovery
 - `Loop KPI Weekly` (default: Mondays 08:00) for delivery/blocker reporting
+- `Forum Council Daily` (default: `15 9,17 * * *`) for discussion triage + decision gate
+- `Forum Council Weekly` (default: `0 9 * * 1`) for strategic alignment
 
 Project scoping rules:
 - Loop workers require explicit `--project-root <path>`.
@@ -249,6 +271,8 @@ Cron frequency is configurable:
 - `--ralphclaw-cron "<expr>"` (default: `*/15 * * * *`)
 - `--autoclaw-cron "<expr>"` (default: `0 */3 * * *`)
 - `--loop-kpi-cron "<expr>"` (default: `0 8 * * 1`)
+- `--forum-daily-cron "<expr>"` (default: `15 9,17 * * *`)
+- `--forum-weekly-cron "<expr>"` (default: `0 9 * * 1`)
 
 Interactive:
 
@@ -267,6 +291,8 @@ Advanced flags:
   --enable-autoclaw \
   --enable-ralphclaw-watchdog \
   --enable-loop-kpi \
+  --enable-forum-daily-council \
+  --enable-forum-weekly-council \
   --ralphclaw-multi-agent \
   --ralphclaw-subagents-parallel 3 \
   --loop-model kimi-coding/k2p5 \
@@ -277,6 +303,8 @@ Advanced flags:
   --ralphclaw-cron "*/15 * * * *" \
   --autoclaw-cron "0 */3 * * *" \
   --loop-kpi-cron "0 8 * * 1" \
+  --forum-daily-cron "15 9,17 * * *" \
+  --forum-weekly-cron "0 9 * * 1" \
   --discord-text-channel <channel_id>
 ```
 

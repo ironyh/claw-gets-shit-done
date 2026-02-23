@@ -13,6 +13,8 @@ ENABLE_AUTOLOOP=0
 ENABLE_CLAWLOOP=0
 ENABLE_AUTOLOOP_WATCHDOG=0
 ENABLE_LOOP_KPI=0
+ENABLE_FORUM_DAILY_COUNCIL=0
+ENABLE_FORUM_WEEKLY_COUNCIL=0
 ALLOW_NO_LOOP_DELIVERY=0
 DEDUPE_CRON_JOBS=1
 DEDUPE_PLUGIN_PATHS=1
@@ -43,6 +45,8 @@ CLAWLOOP_CRON="${CLAWLOOP_CRON:-0 */3 * * *}"
 CLAWLOOP_THINKING="${CLAWLOOP_THINKING:-high}"
 CLAWLOOP_TIMEOUT_SECONDS="${CLAWLOOP_TIMEOUT_SECONDS:-1800}"
 LOOP_KPI_CRON="${LOOP_KPI_CRON:-0 8 * * 1}"
+FORUM_DAILY_CRON="${FORUM_DAILY_CRON:-15 9,17 * * *}"
+FORUM_WEEKLY_CRON="${FORUM_WEEKLY_CRON:-0 9 * * 1}"
 LOOP_INBOX_FILE="${LOOP_INBOX_FILE:-}"
 LOOP_QUEUE_FILE="${LOOP_QUEUE_FILE:-}"
 LOOP_KPI_FILE="${LOOP_KPI_FILE:-}"
@@ -76,6 +80,8 @@ Options:
   --enable-ralphclaw                 Configure RalphClaw cron job
   --enable-autoclaw                  Configure AutoClaw cron job (feature extension)
   --enable-ralphclaw-watchdog        Configure RalphClaw watchdog cron job
+  --enable-forum-daily-council       Configure daily forum discussion council
+  --enable-forum-weekly-council      Configure weekly forum strategy council
   --project-root <path>              Root scanned by loop workers (default: current dir)
   --project-key <slug>               Stable project key for namespaced loop cron jobs
   --loop-channel <name>              Delivery channel for loop updates (e.g., discord)
@@ -91,6 +97,8 @@ Options:
   --allow-no-loop-delivery           Allow loop jobs without delivery target
   --enable-loop-kpi                  Configure weekly KPI/report cron job
   --loop-kpi-cron <expr>             Cron expression for KPI report (default: 0 8 * * 1)
+  --forum-daily-cron <expr>          Cron expression for daily forum council (default: 15 9,17 * * *)
+  --forum-weekly-cron <expr>         Cron expression for weekly forum council (default: 0 9 * * 1)
   --loop-inbox-file <path>           Shared proposal inbox (AutoClaw writes here)
   --loop-queue-file <path>           Shared execution queue (RalphClaw reads here)
   --loop-kpi-file <path>             KPI markdown output path
@@ -370,7 +378,7 @@ resolve_default_loop_files() {
 
 validate_loop_project_scope() {
   local loops_enabled=0
-  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 ]]; then
+  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
     loops_enabled=1
   fi
   [[ "$loops_enabled" -eq 1 ]] || return 0
@@ -462,7 +470,7 @@ apply_preset_defaults() {
 
 validate_loop_delivery() {
   local loops_enabled=0
-  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 ]]; then
+  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
     loops_enabled=1
   fi
   [[ "$loops_enabled" -eq 1 ]] || return 0
@@ -721,12 +729,127 @@ Then post concise summary:
 EOF
 }
 
+build_forum_daily_council_message() {
+  cat <<EOF
+FORUM FLOW V2 - DAILY COUNCIL
+
+Project root:
+- $PROJECT_ROOT
+Project key:
+- $PROJECT_KEY
+Queue files:
+- Inbox: $LOOP_INBOX_FILE
+- Queue: $LOOP_QUEUE_FILE
+
+Mission:
+Turn forum discussions into clear daily decisions with minimal noise.
+
+Protocol:
+1) Review active discussion threads and today's new entries.
+2) Prioritize user-originated input first:
+   - direct user feedback
+   - bug reports
+   - feature requests
+   - friction/pain reports from production usage
+   Mark each as: severity + frequency + affected user segment.
+3) For each active thread, enforce an intake card:
+   - problem
+   - user impact
+   - acceptance criteria
+   - owner
+4) Run timeboxed role discussion in up to 3 rounds:
+   - Round 1: input (VD, Backend, QA; include UI-UX/SEO-SEM when relevant)
+   - Round 2: challenge (role-to-role questions)
+   - Round 3: converge (final recommendation)
+   User input must be explicitly addressed in this discussion before decision.
+5) Role ping guardrails:
+   - roles may request input from another role with:
+     needs_input_from:<role> reason:"..."
+   - summary required before ping
+   - max 2 role-to-role pings per role per thread per daily run
+6) Decision gate (required per thread):
+   - promote_to_queue | need_more_data | reject
+   Include: "user_signal_handled: yes|no" (must be yes for user-originated threads).
+7) If decision is promote_to_queue:
+   - append/update one queue item in $LOOP_QUEUE_FILE
+   - include source thread link/id and acceptance checklist
+8) If decision is need_more_data:
+   - list exact missing data and owner
+   - schedule next review in daily council
+9) If thread is stale (>24h without decision):
+   - mark stale
+   - add escalation note to $LOOP_INBOX_FILE
+10) Post concise summary:
+   - threads reviewed
+   - promoted
+   - need_more_data
+   - rejected
+   - stale/escalated
+
+Rules:
+- Keep discussion objective and evidence-driven.
+- No decision without explicit acceptance criteria.
+- Prefer one promotable, reversible item over broad planning.
+EOF
+}
+
+build_forum_weekly_council_message() {
+  cat <<EOF
+FORUM FLOW V2 - WEEKLY COUNCIL
+
+Project root:
+- $PROJECT_ROOT
+Project key:
+- $PROJECT_KEY
+Queue files:
+- Inbox: $LOOP_INBOX_FILE
+- Queue: $LOOP_QUEUE_FILE
+- KPI: $LOOP_KPI_FILE
+
+Mission:
+Run strategic weekly review across forum discussions and delivery outcomes.
+
+Protocol:
+1) Review last 7 days:
+   - forum decisions
+   - queue throughput
+   - blocked items
+   - test/quality signals
+   - user signal trends (top requests, top pain points, repeated failures)
+2) Build weekly consensus summary with roles:
+   - VD
+   - Backend
+   - QA
+   - plus UI-UX/SEO-SEM/DevOps/Security when needed
+3) Consolidate into:
+   - top 3 priorities for next 7 days
+   - top 3 risks + mitigation owners
+   - top 3 experiments (reversible)
+4) Ensure decision statuses are explicit:
+   - promote_to_queue | need_more_data | reject
+5) Promote only concrete, testable items to $LOOP_QUEUE_FILE.
+6) Write weekly planning notes to $LOOP_INBOX_FILE.
+7) Post final summary:
+   - what changed this week
+   - what gets prioritized next week
+   - what is intentionally deferred
+   - which user signals were accepted, deferred, or rejected (with rationale)
+
+Rules:
+- Prefer fewer high-confidence priorities over long lists.
+- Every promoted item must include owner + acceptance criteria.
+- Keep decisions aligned with measurable outcomes.
+EOF
+}
+
 configure_autonomous_loops() {
   resolve_loop_project_identity
   local ralphclaw_job_name="Kai RalphClaw [$PROJECT_KEY]"
   local autoclaw_job_name="Kai AutoClaw [$PROJECT_KEY]"
   local watchdog_job_name="Kai RalphClaw Watchdog [$PROJECT_KEY]"
   local kpi_job_name="Kai Loop KPI Weekly [$PROJECT_KEY]"
+  local forum_daily_job_name="Kai Forum Council Daily [$PROJECT_KEY]"
+  local forum_weekly_job_name="Kai Forum Council Weekly [$PROJECT_KEY]"
 
   if [[ "$ENABLE_AUTOLOOP" -eq 1 ]]; then
     upsert_loop_cron_job \
@@ -762,6 +885,24 @@ configure_autonomous_loops() {
       "$(build_loop_kpi_message)" \
       "low" \
       "600"
+  fi
+
+  if [[ "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 ]]; then
+    upsert_loop_cron_job \
+      "$forum_daily_job_name" \
+      "$FORUM_DAILY_CRON" \
+      "$(build_forum_daily_council_message)" \
+      "medium" \
+      "1200"
+  fi
+
+  if [[ "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+    upsert_loop_cron_job \
+      "$forum_weekly_job_name" \
+      "$FORUM_WEEKLY_CRON" \
+      "$(build_forum_weekly_council_message)" \
+      "medium" \
+      "1800"
   fi
 }
 
@@ -897,6 +1038,14 @@ run_interactive_wizard() {
     if [[ "$ENABLE_LOOP_KPI" -eq 1 ]]; then
       prompt_value LOOP_KPI_CRON "Weekly KPI cron expression" "$LOOP_KPI_CRON"
     fi
+    prompt_yes_no ENABLE_FORUM_DAILY_COUNCIL "Enable daily forum council?" "$ENABLE_FORUM_DAILY_COUNCIL"
+    if [[ "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 ]]; then
+      prompt_value FORUM_DAILY_CRON "Daily forum council cron expression" "$FORUM_DAILY_CRON"
+    fi
+    prompt_yes_no ENABLE_FORUM_WEEKLY_COUNCIL "Enable weekly forum council?" "$ENABLE_FORUM_WEEKLY_COUNCIL"
+    if [[ "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+      prompt_value FORUM_WEEKLY_CRON "Weekly forum council cron expression" "$FORUM_WEEKLY_CRON"
+    fi
   fi
 
   cat <<SUMMARY
@@ -926,6 +1075,10 @@ run_interactive_wizard() {
   ralphclaw subagents parallel: $RALPHCLAW_SUBAGENTS_PARALLEL
   enable loop kpi: $ENABLE_LOOP_KPI
   loop kpi cron: $LOOP_KPI_CRON
+  enable forum daily council: $ENABLE_FORUM_DAILY_COUNCIL
+  forum daily cron: $FORUM_DAILY_CRON
+  enable forum weekly council: $ENABLE_FORUM_WEEKLY_COUNCIL
+  forum weekly cron: $FORUM_WEEKLY_CRON
   loop inbox file: ${LOOP_INBOX_FILE:-<auto>}
   loop queue file: ${LOOP_QUEUE_FILE:-<auto>}
   loop kpi file: ${LOOP_KPI_FILE:-<auto>}
@@ -1071,6 +1224,8 @@ while [[ $# -gt 0 ]]; do
     --enable-ralphclaw) ENABLE_AUTOLOOP=1; shift ;;
     --enable-autoclaw) ENABLE_CLAWLOOP=1; shift ;;
     --enable-ralphclaw-watchdog) ENABLE_AUTOLOOP_WATCHDOG=1; shift ;;
+    --enable-forum-daily-council) ENABLE_FORUM_DAILY_COUNCIL=1; shift ;;
+    --enable-forum-weekly-council) ENABLE_FORUM_WEEKLY_COUNCIL=1; shift ;;
     --project-root) PROJECT_ROOT="${2:-}"; PROJECT_ROOT_SET=1; PROJECT_ROOT_CONFIRMED=1; shift 2 ;;
     --project-key) PROJECT_KEY="${2:-}"; PROJECT_KEY_SET=1; shift 2 ;;
     --loop-channel) LOOP_CHANNEL="${2:-}"; shift 2 ;;
@@ -1086,6 +1241,8 @@ while [[ $# -gt 0 ]]; do
     --allow-no-loop-delivery) ALLOW_NO_LOOP_DELIVERY=1; shift ;;
     --enable-loop-kpi) ENABLE_LOOP_KPI=1; shift ;;
     --loop-kpi-cron) LOOP_KPI_CRON="${2:-}"; shift 2 ;;
+    --forum-daily-cron) FORUM_DAILY_CRON="${2:-}"; shift 2 ;;
+    --forum-weekly-cron) FORUM_WEEKLY_CRON="${2:-}"; shift 2 ;;
     --loop-inbox-file) LOOP_INBOX_FILE="${2:-}"; LOOP_INBOX_FILE_SET=1; shift 2 ;;
     --loop-queue-file) LOOP_QUEUE_FILE="${2:-}"; LOOP_QUEUE_FILE_SET=1; shift 2 ;;
     --loop-kpi-file) LOOP_KPI_FILE="${2:-}"; LOOP_KPI_FILE_SET=1; shift 2 ;;
@@ -1175,7 +1332,7 @@ log "Skill destination: $SKILL_DEST"
 log "Plugin source: $PLUGIN_SRC"
 log "Plugin destination: $PLUGIN_PATH"
 log "Config path: $CONFIG_PATH"
-if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 ]]; then
+if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
   log "Project root: $PROJECT_ROOT"
   log "Project key: $PROJECT_KEY"
   log "Loop inbox: $LOOP_INBOX_FILE"
@@ -1199,7 +1356,7 @@ if [[ "$RESTART_GATEWAY" -eq 1 ]]; then
   fi
 fi
 
-if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 ]]; then
+if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
   log "Ensuring loop handoff files"
   ensure_loop_handoff_files
   log "Configuring autonomous loop workers"
@@ -1225,6 +1382,8 @@ Loop mode (optional):
   --enable-ralphclaw (default: $AUTOLOOP_CRON)
   --enable-autoclaw (default: $CLAWLOOP_CRON)
   --enable-loop-kpi (default: $LOOP_KPI_CRON)
+  --enable-forum-daily-council (default cron: $FORUM_DAILY_CRON)
+  --enable-forum-weekly-council (default cron: $FORUM_WEEKLY_CRON)
   --project-root <path> (required when loop workers are enabled)
   --project-key <slug> (optional override; derived from project root by default)
   --preset generic

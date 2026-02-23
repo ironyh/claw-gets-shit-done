@@ -26,6 +26,8 @@ If you have enough context:
   --enable-autoclaw \
   --enable-ralphclaw-watchdog \
   --enable-loop-kpi \
+  --enable-forum-daily-council \
+  --enable-forum-weekly-council \
   --loop-channel discord \
   --loop-target <target_id>
 ```
@@ -69,6 +71,7 @@ Ask only for:
 3) ralphclaw sub-agent parallelism
 If user does not want delivery target, use --allow-no-loop-delivery.
 Enable RalphClaw + AutoClaw + watchdog by default.
+If Discord/forum is used, also enable forum daily + weekly councils.
 After install, run:
 ./doctor.sh
 openclaw gateway health
