@@ -22,6 +22,7 @@ This bundle is built to handle different OpenClaw setups (home dirs, workspace i
 - Operations/troubleshooting: `docs/operations.md`
 - Build/release guide: `docs/build-release.md`
 - FAQ: `docs/faq.md`
+- Documentation skill (for bots/contributors): `skills/cgsd-docs/SKILL.md`
 
 Local searchable preview:
 

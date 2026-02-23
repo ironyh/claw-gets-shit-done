@@ -1,0 +1,20 @@
+:root {
+  --cgsd-radius: 12px;
+}
+
+.md-typeset code {
+  border-radius: 6px;
+}
+
+.md-typeset pre > code {
+  border-radius: var(--cgsd-radius);
+}
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: var(--cgsd-radius);
+}
+
+.md-header {
+  backdrop-filter: saturate(160%) blur(8px);
+}
