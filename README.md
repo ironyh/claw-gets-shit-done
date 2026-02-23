@@ -8,6 +8,34 @@ Packaged GSD workflow for OpenClaw with:
 
 This bundle is built to handle different OpenClaw setups (home dirs, workspace installs, custom paths).
 
+## Install From Repo URL (Agent-Friendly)
+
+If users only provide this GitHub repo URL, OpenClaw can still install automatically.
+
+One-liner bootstrap:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/ironyh/claw-gets-shit-done/main/scripts/bootstrap-install.sh)
+```
+
+Behavior:
+- If run in a TTY with no flags, it launches `./install.sh --interactive`.
+- If flags are passed, it runs non-interactive with those flags.
+- It only asks for missing required inputs (for example delivery target, or desired sub-agent parallelism).
+
+Non-interactive example:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/ironyh/claw-gets-shit-done/main/scripts/bootstrap-install.sh) -- \
+  --profile home --no-interactive --force \
+  --preset badgeid \
+  --enable-ralphclaw --ralphclaw-multi-agent --ralphclaw-subagents-parallel 3 \
+  --enable-autoclaw --enable-ralphclaw-watchdog --enable-loop-kpi \
+  --loop-channel discord --loop-target <target_id>
+```
+
+Agent operators: see `AGENT-INSTALL.md`.
+
 ## Architecture: How It Fits Together
 
 This suite combines three layers:
