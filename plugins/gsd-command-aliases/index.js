@@ -257,6 +257,28 @@ function parseBool(value, fallback = false) {
   return fallback;
 }
 
+function pickDefined(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null) return value;
+  }
+  return undefined;
+}
+
+function readLocalPluginConfig() {
+  const localPath = path.join(__dirname, "config.local.json");
+  if (!fs.existsSync(localPath)) return {};
+  try {
+    const raw = fs.readFileSync(localPath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    // ignore malformed local config
+  }
+  return {};
+}
+
 function safeSlugUpper(text) {
   const normalized = (text ?? "")
     .toString()
@@ -278,27 +300,28 @@ function defaultLoopFiles(workspaceDir) {
 
 function resolveLoopConfig(api, workspaceDir) {
   const cfg = getPluginConfig(api);
+  const localCfg = readLocalPluginConfig();
   const defaults = defaultLoopFiles(workspaceDir);
-  const inboxFile = expandPath(cfg.loopInboxFile) || defaults.inboxFile;
-  const queueFile = expandPath(cfg.loopQueueFile) || defaults.queueFile;
-  const epicId = (cfg.defaultEpicId ?? "EPIC-GSD-BACKLOG").toString().trim() || "EPIC-GSD-BACKLOG";
-  const epicTitle = (cfg.defaultEpicTitle ?? "GSD Backlog").toString().trim() || "GSD Backlog";
+  const inboxFile = expandPath(pickDefined(cfg.loopInboxFile, localCfg.loopInboxFile)) || defaults.inboxFile;
+  const queueFile = expandPath(pickDefined(cfg.loopQueueFile, localCfg.loopQueueFile)) || defaults.queueFile;
+  const epicId = (pickDefined(cfg.defaultEpicId, localCfg.defaultEpicId, "EPIC-GSD-BACKLOG")).toString().trim() || "EPIC-GSD-BACKLOG";
+  const epicTitle = (pickDefined(cfg.defaultEpicTitle, localCfg.defaultEpicTitle, "GSD Backlog")).toString().trim() || "GSD Backlog";
   const discordForumTarget = (
-    cfg.discordForumTarget ??
+    pickDefined(cfg.discordForumTarget, localCfg.discordForumTarget) ??
     process.env.CGSD_DISCORD_FORUM_TARGET ??
     ""
   )
     .toString()
     .trim();
-  const discordAccountId = (cfg.discordAccountId ?? "").toString().trim();
+  const discordAccountId = (pickDefined(cfg.discordAccountId, localCfg.discordAccountId, "")).toString().trim();
 
   return {
     inboxFile,
     queueFile,
     epicId,
     epicTitle,
-    autoQueueTodo: parseBool(cfg.autoQueueTodo, true),
-    autoThreadOnNewEpic: parseBool(cfg.autoThreadOnNewEpic, true),
+    autoQueueTodo: parseBool(pickDefined(cfg.autoQueueTodo, localCfg.autoQueueTodo), true),
+    autoThreadOnNewEpic: parseBool(pickDefined(cfg.autoThreadOnNewEpic, localCfg.autoThreadOnNewEpic), true),
     discordForumTarget,
     discordAccountId,
   };

@@ -1271,7 +1271,14 @@ backup_path() {
   local target="$1"
   local ts
   ts="$(date +%Y%m%d-%H%M%S)"
-  printf '%s.bak.%s' "$target" "$ts"
+  local safe_target
+  safe_target="${target#/}"
+  safe_target="${safe_target//\//__}"
+  safe_target="${safe_target// /_}"
+  safe_target="${safe_target//:/_}"
+  safe_target="${safe_target//[^A-Za-z0-9._-]/-}"
+  [[ -n "$safe_target" ]] || safe_target="target"
+  printf '%s/backups/cgsd/%s.bak.%s.%s.%s' "$OPENCLAW_DIR" "$safe_target" "$ts" "$$" "$RANDOM"
 }
 
 run_or_echo() {
@@ -1299,6 +1306,7 @@ install_tree() {
       local backup
       backup="$(backup_path "$dest")"
       log "Backing up existing path: $dest -> $backup"
+      run_or_echo mkdir -p "$(dirname "$backup")"
       run_or_echo mv "$dest" "$backup"
     else
       fail "Destination exists: $dest (use --force to replace)"
@@ -1337,6 +1345,7 @@ patch_openclaw_config() {
   tmp="${cfg}.tmp"
 
   log "Backing up config: $cfg -> $backup"
+  run_or_echo mkdir -p "$(dirname "$backup")"
   run_or_echo cp "$cfg" "$backup"
 
   local installed_at
@@ -1351,7 +1360,6 @@ patch_openclaw_config() {
   jq \
     --arg plugin_path "$plugin_path" \
     --arg plugin_dir_name "$plugin_dir_name" \
-    --arg discord_forum_target "$DISCORD_FORUM_TARGET" \
     --argjson dedupe_plugin_paths "$DEDUPE_PLUGIN_PATHS" \
     --arg installed_at "$installed_at" \
     '
@@ -1378,7 +1386,6 @@ patch_openclaw_config() {
       .plugins.entries["gsd-command-aliases"] = (
         (.plugins.entries["gsd-command-aliases"] // {})
         + {enabled: true}
-        + (if $discord_forum_target != "" then {discordForumTarget: $discord_forum_target} else {} end)
       ) |
       .plugins.installs = (.plugins.installs // {}) |
       .plugins.installs["gsd-command-aliases"] = {
