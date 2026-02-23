@@ -16,7 +16,6 @@ ENABLE_LOOP_KPI=0
 ALLOW_NO_LOOP_DELIVERY=0
 DEDUPE_CRON_JOBS=1
 DEDUPE_PLUGIN_PATHS=1
-LEGACY_LOOP_CLEANUP=0
 OPENCLAW_DIR="${OPENCLAW_DIR:-$HOME/.openclaw}"
 WORKSPACE_ROOT=""
 SKILL_DIR=""
@@ -75,11 +74,8 @@ Options:
   --plugin-path <path>               Explicit plugin install path (full path incl plugin folder)
   --config <path>                    Explicit openclaw.json path
   --enable-ralphclaw                 Configure RalphClaw cron job
-  --enable-autoloop                  Backward-compatible alias for --enable-ralphclaw
   --enable-autoclaw                  Configure AutoClaw cron job (feature extension)
-  --enable-clawloop                  Backward-compatible alias for --enable-autoclaw
   --enable-ralphclaw-watchdog        Configure RalphClaw watchdog cron job
-  --enable-autoloop-watchdog         Backward-compatible alias for --enable-ralphclaw-watchdog
   --project-root <path>              Root scanned by loop workers (default: current dir)
   --project-key <slug>               Stable project key for namespaced loop cron jobs
   --loop-channel <name>              Delivery channel for loop updates (e.g., discord)
@@ -101,11 +97,8 @@ Options:
   --loop-lock-file <path>            Shared lock file to prevent overlapping loop runs
   --no-dedupe-crons                  Do not remove duplicate cron jobs with same name
   --no-dedupe-plugin-paths           Do not prune duplicate plugin paths for same plugin id
-  --cleanup-legacy-loop-jobs         Remove old unscoped loop cron jobs (destructive)
   --ralphclaw-cron <expr>            Cron expression for RalphClaw (default: */15 * * * *)
-  --autoloop-cron <expr>             Backward-compatible alias for --ralphclaw-cron
   --autoclaw-cron <expr>             Cron expression for AutoClaw (default: 0 */3 * * *)
-  --clawloop-cron <expr>             Backward-compatible alias for --autoclaw-cron
   --force                            Replace existing installs (backed up with timestamp)
   --restart-gateway                  Restart gateway after config patch
   --dry-run                          Print planned actions only
@@ -756,34 +749,12 @@ Then post concise summary:
 EOF
 }
 
-cleanup_legacy_loop_job_names() {
-  [[ "$DRY_RUN" -eq 0 ]] || return 0
-  [[ "$LEGACY_LOOP_CLEANUP" -eq 1 ]] || return 0
-  local legacy_name legacy_id
-  local -a legacy_names=(
-    "Kai RalphClaw (15m)"
-    "Kai AutoClaw (3h)"
-    "Kai RalphClaw Watchdog (20m)"
-    "Kai Loop KPI Weekly"
-  )
-  for legacy_name in "${legacy_names[@]}"; do
-    while IFS= read -r legacy_id; do
-      [[ -n "$legacy_id" ]] || continue
-      log "Removing legacy unscoped cron '$legacy_name': $legacy_id"
-      openclaw cron disable "$legacy_id" >/dev/null 2>&1 || true
-      openclaw cron rm "$legacy_id" >/dev/null 2>&1 || true
-    done < <(resolve_cron_ids_by_name "$legacy_name" || true)
-  done
-}
-
 configure_autonomous_loops() {
   resolve_loop_project_identity
   local ralphclaw_job_name="Kai RalphClaw [$PROJECT_KEY]"
   local autoclaw_job_name="Kai AutoClaw [$PROJECT_KEY]"
   local watchdog_job_name="Kai RalphClaw Watchdog [$PROJECT_KEY]"
   local kpi_job_name="Kai Loop KPI Weekly [$PROJECT_KEY]"
-
-  cleanup_legacy_loop_job_names
 
   if [[ "$ENABLE_AUTOLOOP" -eq 1 ]]; then
     upsert_loop_cron_job \
@@ -1126,11 +1097,8 @@ while [[ $# -gt 0 ]]; do
     --plugin-path) PLUGIN_PATH="${2:-}"; shift 2 ;;
     --config) CONFIG_PATH="${2:-}"; shift 2 ;;
     --enable-ralphclaw) ENABLE_AUTOLOOP=1; shift ;;
-    --enable-autoloop) ENABLE_AUTOLOOP=1; shift ;;
     --enable-autoclaw) ENABLE_CLAWLOOP=1; shift ;;
-    --enable-clawloop) ENABLE_CLAWLOOP=1; shift ;;
     --enable-ralphclaw-watchdog) ENABLE_AUTOLOOP_WATCHDOG=1; shift ;;
-    --enable-autoloop-watchdog) ENABLE_AUTOLOOP_WATCHDOG=1; shift ;;
     --project-root) PROJECT_ROOT="${2:-}"; PROJECT_ROOT_SET=1; PROJECT_ROOT_CONFIRMED=1; shift 2 ;;
     --project-key) PROJECT_KEY="${2:-}"; PROJECT_KEY_SET=1; shift 2 ;;
     --loop-channel) LOOP_CHANNEL="${2:-}"; shift 2 ;;
@@ -1152,11 +1120,8 @@ while [[ $# -gt 0 ]]; do
     --loop-lock-file) LOOP_LOCK_FILE="${2:-}"; shift 2 ;;
     --no-dedupe-crons) DEDUPE_CRON_JOBS=0; shift ;;
     --no-dedupe-plugin-paths) DEDUPE_PLUGIN_PATHS=0; shift ;;
-    --cleanup-legacy-loop-jobs) LEGACY_LOOP_CLEANUP=1; shift ;;
     --ralphclaw-cron) AUTOLOOP_CRON="${2:-}"; shift 2 ;;
-    --autoloop-cron) AUTOLOOP_CRON="${2:-}"; shift 2 ;;
     --autoclaw-cron) CLAWLOOP_CRON="${2:-}"; shift 2 ;;
-    --clawloop-cron) CLAWLOOP_CRON="${2:-}"; shift 2 ;;
     --force) FORCE=1; shift ;;
     --restart-gateway) RESTART_GATEWAY=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;

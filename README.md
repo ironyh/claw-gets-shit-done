@@ -259,13 +259,6 @@ Discord forum thread delivery:
   --discord-forum-thread <forum_thread_id>
 ```
 
-Legacy aliases supported:
-- `--enable-autoloop` (same as `--enable-ralphclaw`)
-- `--enable-autoloop-watchdog` (same as `--enable-ralphclaw-watchdog`)
-- `--autoloop-cron` (same as `--ralphclaw-cron`)
-- `--enable-clawloop` (same as `--enable-autoclaw`)
-- `--clawloop-cron` (same as `--autoclaw-cron`)
-
 Useful defaults:
 - `--preset badgeid` (pre-fills project paths + Stockholm timezone + known Discord target)
 - `--preset nurrse` (pre-fills project root + Stockholm timezone)
@@ -278,7 +271,6 @@ Multi-project setup:
 - Run installer once per project with different `--project-root`.
 - Use distinct Discord targets per project.
 - Optional: set explicit `--project-key` per project for stable cron naming.
-- Optional one-time cleanup of old unscoped jobs: `--cleanup-legacy-loop-jobs` (destructive).
 
 Discord delivery shortcuts:
 - Text channel: `--discord-text-channel <channel_id>`
