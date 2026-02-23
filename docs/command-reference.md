@@ -47,6 +47,17 @@ The `gsd-command-aliases` plugin adds slash-friendly snake/hyphen aliases:
 2. If forum integration is configured, can auto-create a Discord forum thread.
 3. Epic id defaults to `EPIC-<thread_or_generated_id>`.
 
+### `/gsd-discuss-phase`
+
+Expected outcome is explicit artifact state, not only chat text:
+
+1. Capture concrete decisions (constraints, tradeoffs, chosen direction).
+2. Map decision to next command (`/gsd-plan-phase`, `/gsd-add-todo`, etc.).
+3. If integrated with queue/forum flow, update decision fields:
+   - `decision`
+   - `gsd_action`
+   - `verify_status` (later when executed)
+
 ## Related Config Keys
 
 In `openclaw.json`:

@@ -48,3 +48,32 @@ When a new todo is added with `/gsd-add-todo`:
 - `verify_status: pending`
 - `priority: P1` (default; councils/loop can promote/demote)
 4. RalphClaw executes one bounded step and must pass verify gate.
+
+## Discuss-To-Verify Control
+
+To match GSD discipline, do not stop at "discussion completed". Track decision lifecycle:
+
+1. Decision captured
+- Record explicit decision state:
+  - `pending`
+  - `promote_to_queue`
+  - `need_more_data`
+  - `reject`
+
+2. Queue linkage
+- If promoted, record queue linkage + `gsd_action`.
+- Keep acceptance criteria on the queue task.
+
+3. Verification gate
+- Mark verify outcome explicitly:
+  - `verify_status: passed|failed|pending`
+- Add evidence (test output, build result, PR/commit reference).
+
+4. Control review
+- Maintain a periodic control report:
+  - decisions needing outcome
+  - promoted-but-not-verified
+  - verification failures
+
+Rule:
+- Promoted work is not "done" until verify passes with evidence.
