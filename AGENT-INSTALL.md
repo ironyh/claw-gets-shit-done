@@ -29,7 +29,8 @@ If you have enough context:
   --enable-forum-daily-council \
   --enable-forum-weekly-council \
   --loop-channel discord \
-  --loop-target <target_id>
+  --loop-target <target_id> \
+  --discord-slash-allow-from "*"
 ```
 
 Then verify:
@@ -74,9 +75,13 @@ Ask only for:
 If user does not want delivery target, use --allow-no-loop-delivery.
 Enable RalphClaw + AutoClaw + watchdog by default.
 If Discord/forum is used, also enable forum daily + weekly councils.
+When Discord is used, include --discord-slash-allow-from "*".
 After install, run:
 ./doctor.sh
 openclaw gateway health
+Then follow installer bootstrap hint:
+- brownfield: /gsd-map-codebase -> /gsd-new-project
+- greenfield: /gsd-new-project
 Return a concise status report including any blockers.
 ```
 

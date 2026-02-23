@@ -47,6 +47,17 @@ The `gsd-command-aliases` plugin adds slash-friendly snake/hyphen aliases:
 2. If forum integration is configured, can auto-create a Discord forum thread.
 3. Epic id defaults to `EPIC-<thread_or_generated_id>`.
 
+### Brownfield Startup
+
+For existing codebases, run:
+
+1. `/gsd-map-codebase`
+2. `/gsd-new-project`
+
+For greenfield with an idea document, you can use:
+
+- `/gsd-new-project --auto @PROJECT_IDEA.md`
+
 ### `/gsd-discuss-phase`
 
 Expected outcome is explicit artifact state, not only chat text:
@@ -60,10 +71,14 @@ Expected outcome is explicit artifact state, not only chat text:
 
 ## Related Config Keys
 
-In `openclaw.json`:
+In `openclaw.json` (channel auth gate):
 
-- `plugins.entries.gsd-command-aliases.autoQueueTodo`
-- `plugins.entries.gsd-command-aliases.autoThreadOnNewEpic`
-- `plugins.entries.gsd-command-aliases.discordForumTarget`
-- `plugins.entries.gsd-command-aliases.workspaceDir`
-- `plugins.entries.gsd-command-aliases.gsdToolsPath`
+- `channels.discord.allowFrom` (must include sender id or `*` for slash/plugin command access)
+
+In plugin local config (`~/.openclaw/extensions/gsd-command-aliases/config.local.json`):
+
+- `autoQueueTodo`
+- `autoThreadOnNewEpic`
+- `discordForumTarget`
+- `workspaceDir`
+- `gsdToolsPath`

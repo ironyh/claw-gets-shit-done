@@ -38,7 +38,8 @@
 - `--loop-target <id>`
 - `--discord-text-channel <id>`
 - `--discord-forum-thread <id>`
-- `--discord-forum-target <id>` (installer writes plugin `discordForumTarget`)
+- `--discord-forum-target <id>` (installer writes plugin local config `config.local.json`)
+- `--discord-slash-allow-from <id|*>` (installer patches `channels.discord.allowFrom`, default `*`)
 - If omitted, installer tries best-effort autodetect.
 - `--allow-no-loop-delivery` for silent execution.
 
@@ -47,9 +48,14 @@
 - `GSD_WORKSPACE_DIR=/path/to/project`
 - `GSD_TOOLS_PATH=/path/to/skills/claw-gets-shit-done/bin/gsd-tools`
 
-## Plugin Entry Overrides
+## Plugin Runtime Overrides
 
-In `openclaw.json` under `plugins.entries.gsd-command-aliases`:
+OpenClaw builds with strict config schemas may reject custom plugin keys in `openclaw.json`.
+Use plugin-local config instead:
+
+- `~/.openclaw/extensions/gsd-command-aliases/config.local.json`
+
+Supported keys:
 
 - `workspaceDir`
 - `gsdToolsPath`

@@ -28,9 +28,18 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ironyh/claw-gets-shit-done/m
   --enable-forum-daily-council \
   --enable-forum-weekly-council \
   --discord-forum-target <forum_channel_id> \
+  --discord-slash-allow-from "*" \
   --loop-channel discord \
   --loop-target <target_id>
 ```
+
+## GSD Bootstrap (Brownfield vs Greenfield)
+
+After install, CGSD prints recommended first GSD command based on project state:
+
+- Brownfield (existing code without map): `/gsd-map-codebase` then `/gsd-new-project`
+- Greenfield: `/gsd-new-project`
+- Greenfield with `PROJECT_IDEA.md`/`IDEA.md`/`PRD.md`: `/gsd-new-project --auto @<file>`
 
 ## Deterministic GSD Bridge
 

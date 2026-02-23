@@ -34,6 +34,7 @@ PROJECT_KEY="${PROJECT_KEY:-}"
 LOOP_CHANNEL="${LOOP_CHANNEL:-discord}"
 LOOP_TARGET="${LOOP_TARGET:-}"
 DISCORD_FORUM_TARGET="${DISCORD_FORUM_TARGET:-}"
+DISCORD_SLASH_ALLOW_FROM="${DISCORD_SLASH_ALLOW_FROM:-*}"
 LOOP_AGENT="${LOOP_AGENT:-main}"
 LOOP_MODEL="${LOOP_MODEL:-kimi-coding/k2p5}"
 LOOP_TZ="${LOOP_TZ:-UTC}"
@@ -85,6 +86,7 @@ Options:
   --discord-text-channel <id>        Shortcut: --loop-channel discord --loop-target <id>
   --discord-forum-thread <id>        Shortcut: --loop-channel discord --loop-target <thread_id>
   --discord-forum-target <id>        Discord forum channel target for /gsd-new-epic thread creation (auto-detected if omitted, best effort)
+  --discord-slash-allow-from <id|*>  Add Discord slash-command sender allowlist entry (default: *)
   --loop-agent <id>                  Agent id for loop jobs (default: main)
   --loop-model <id>                  Model id for loop jobs (default: kimi-coding/k2p5)
   --loop-tz <iana_tz>                Timezone for loop jobs (default: UTC)
@@ -214,6 +216,13 @@ detect_discord_forum_target() {
   fi
 
   if [[ -f "$cfg" ]] && command -v jq >/dev/null 2>&1; then
+    if [[ -n "${PLUGIN_PATH:-}" && -f "${PLUGIN_PATH}/config.local.json" ]]; then
+      candidate="$(jq -r '.discordForumTarget // empty' "${PLUGIN_PATH}/config.local.json" 2>/dev/null || true)"
+      if [[ -n "$candidate" && "$candidate" != "null" ]]; then
+        printf '%s' "$candidate"
+        return 0
+      fi
+    fi
     candidate="$(jq -r '.plugins.entries["gsd-command-aliases"].discordForumTarget // empty' "$cfg" 2>/dev/null || true)"
     if [[ -n "$candidate" && "$candidate" != "null" ]]; then
       printf '%s' "$candidate"
@@ -277,6 +286,63 @@ PY
   fi
 
   printf ''
+}
+
+write_plugin_local_config() {
+  local plugin_path="$1"
+  local local_cfg="$plugin_path/config.local.json"
+
+  if [[ "${loops_enabled_runtime:-0}" -eq 0 && -z "${DISCORD_FORUM_TARGET:-}" ]]; then
+    return 0
+  fi
+
+  if [[ ! -d "$plugin_path" ]]; then
+    warn "Plugin path missing, skipping local plugin config: $plugin_path"
+    return 0
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    warn "python3 not found, skipping local plugin config write ($local_cfg)"
+    return 0
+  fi
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    printf '[dry-run] write plugin local config: %s\n' "$local_cfg"
+    return 0
+  fi
+
+  python3 - "$local_cfg" "${DISCORD_FORUM_TARGET:-}" "${LOOP_INBOX_FILE:-}" "${LOOP_QUEUE_FILE:-}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+cfg_path = Path(sys.argv[1])
+discord_forum_target = (sys.argv[2] or "").strip()
+loop_inbox_file = (sys.argv[3] or "").strip()
+loop_queue_file = (sys.argv[4] or "").strip()
+
+data = {}
+if cfg_path.exists():
+    try:
+        existing = json.loads(cfg_path.read_text(encoding="utf-8"))
+        if isinstance(existing, dict):
+            data = existing
+    except Exception:
+        data = {}
+
+if discord_forum_target and discord_forum_target.lower() != "none":
+    data["discordForumTarget"] = discord_forum_target
+
+if loop_inbox_file:
+    data["loopInboxFile"] = loop_inbox_file
+if loop_queue_file:
+    data["loopQueueFile"] = loop_queue_file
+
+cfg_path.parent.mkdir(parents=True, exist_ok=True)
+cfg_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+PY
+
+  log "Wrote plugin local config: $local_cfg"
 }
 
 prompt_choice() {
@@ -1189,6 +1255,7 @@ run_interactive_wizard() {
           DISCORD_FORUM_TARGET="$(detect_discord_forum_target "$CONFIG_PATH")"
         fi
         prompt_value DISCORD_FORUM_TARGET "Discord forum channel id for /gsd-new-epic (auto-detect best effort)" "${DISCORD_FORUM_TARGET:-}"
+        prompt_value DISCORD_SLASH_ALLOW_FROM "Discord slash-command allowFrom entry (*, user-id, or none)" "${DISCORD_SLASH_ALLOW_FROM:-*}"
       else
         prompt_value LOOP_TARGET "Loop delivery target id" "${LOOP_TARGET:-}"
       fi
@@ -1244,6 +1311,7 @@ run_interactive_wizard() {
   loop channel: ${LOOP_CHANNEL:-<none>}
   loop target: ${LOOP_TARGET:-<none>}
   discord forum target: ${DISCORD_FORUM_TARGET:-<none>}
+  discord slash allowFrom: ${DISCORD_SLASH_ALLOW_FROM:-<none>}
   loop lock file: ${LOOP_LOCK_FILE:-<auto>}
   allow no loop delivery: $ALLOW_NO_LOOP_DELIVERY
   loop max files: $LOOP_MAX_FILES
@@ -1360,6 +1428,7 @@ patch_openclaw_config() {
   jq \
     --arg plugin_path "$plugin_path" \
     --arg plugin_dir_name "$plugin_dir_name" \
+    --arg discord_slash_allow_from "$DISCORD_SLASH_ALLOW_FROM" \
     --argjson dedupe_plugin_paths "$DEDUPE_PLUGIN_PATHS" \
     --arg installed_at "$installed_at" \
     '
@@ -1387,6 +1456,19 @@ patch_openclaw_config() {
         (.plugins.entries["gsd-command-aliases"] // {})
         + {enabled: true}
       ) |
+      if
+        ((.channels.discord? | type) == "object")
+        and (($discord_slash_allow_from | ascii_downcase) != "none")
+        and (($discord_slash_allow_from | length) > 0)
+      then
+        .channels.discord.allowFrom = (
+          (if (.channels.discord.allowFrom | type) == "array" then .channels.discord.allowFrom else [] end)
+          + [$discord_slash_allow_from]
+          | unique
+        )
+      else
+        .
+      end |
       .plugins.installs = (.plugins.installs // {}) |
       .plugins.installs["gsd-command-aliases"] = {
         source: "path",
@@ -1416,6 +1498,9 @@ build_saved_install_args() {
   fi
   if [[ -n "$DISCORD_FORUM_TARGET" ]]; then
     _out_ref+=(--discord-forum-target "$DISCORD_FORUM_TARGET")
+  fi
+  if [[ -n "$DISCORD_SLASH_ALLOW_FROM" ]]; then
+    _out_ref+=(--discord-slash-allow-from "$DISCORD_SLASH_ALLOW_FROM")
   fi
 
   local loops_enabled=0
@@ -1515,6 +1600,64 @@ PY
   log "Saved install state: $state_file"
 }
 
+print_gsd_bootstrap_guidance() {
+  local project_root="$1"
+  local gsd_tools="$2"
+
+  [[ -d "$project_root" ]] || return 0
+  [[ -x "$gsd_tools" ]] || return 0
+  command -v python3 >/dev/null 2>&1 || return 0
+
+  local init_json
+  init_json="$(cd "$project_root" && "$gsd_tools" init new-project --raw 2>/dev/null || true)"
+  [[ -n "$init_json" ]] || return 0
+
+  local guidance
+  guidance="$(
+    python3 - "$project_root" "$init_json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+project_root = Path(sys.argv[1])
+raw = sys.argv[2]
+
+try:
+    data = json.loads(raw)
+except Exception:
+    sys.exit(0)
+
+if not isinstance(data, dict):
+    sys.exit(0)
+
+project_exists = bool(data.get("project_exists"))
+needs_codebase_map = bool(data.get("needs_codebase_map"))
+is_brownfield = bool(data.get("is_brownfield"))
+
+idea_files = [
+    project_root / "PROJECT_IDEA.md",
+    project_root / "IDEA.md",
+    project_root / "PRD.md",
+]
+idea_file = next((p.name for p in idea_files if p.exists()), "")
+
+if project_exists:
+    print("[install] GSD bootstrap: existing .planning detected (skipping init guidance).")
+elif needs_codebase_map or is_brownfield:
+    print("[install] GSD bootstrap (brownfield):")
+    print("  1) /gsd-map-codebase")
+    print("  2) /gsd-new-project")
+else:
+    if idea_file:
+        print(f"[install] GSD bootstrap (greenfield): /gsd-new-project --auto @{idea_file}")
+    else:
+        print("[install] GSD bootstrap (greenfield): /gsd-new-project")
+PY
+  )"
+
+  [[ -n "$guidance" ]] && printf '%s\n' "$guidance"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile) PROFILE="${2:-}"; shift 2 ;;
@@ -1539,6 +1682,7 @@ while [[ $# -gt 0 ]]; do
     --discord-text-channel) LOOP_CHANNEL="discord"; LOOP_TARGET="${2:-}"; shift 2 ;;
     --discord-forum-thread) LOOP_CHANNEL="discord"; LOOP_TARGET="${2:-}"; shift 2 ;;
     --discord-forum-target) DISCORD_FORUM_TARGET="${2:-}"; shift 2 ;;
+    --discord-slash-allow-from) DISCORD_SLASH_ALLOW_FROM="${2:-}"; shift 2 ;;
     --loop-agent) LOOP_AGENT="${2:-}"; shift 2 ;;
     --loop-model) LOOP_MODEL="${2:-}"; shift 2 ;;
     --loop-tz) LOOP_TZ="${2:-}"; shift 2 ;;
@@ -1661,6 +1805,7 @@ if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_
   log "Loop queue: $LOOP_QUEUE_FILE"
   log "Loop KPI file: $LOOP_KPI_FILE"
   log "Discord forum target (plugin): ${DISCORD_FORUM_TARGET:-<none>}"
+  log "Discord slash allowFrom entry: ${DISCORD_SLASH_ALLOW_FROM:-<none>}"
   log "Loop lock file: $LOOP_LOCK_FILE"
   log "RalphClaw multi-agent: $ENABLE_RALPHCLAW_MULTI_AGENT"
   log "RalphClaw subagents parallel: $RALPHCLAW_SUBAGENTS_PARALLEL"
@@ -1670,6 +1815,7 @@ fi
 
 install_tree "$SKILL_SRC" "$SKILL_DEST"
 install_tree "$PLUGIN_SRC" "$PLUGIN_PATH"
+write_plugin_local_config "$PLUGIN_PATH"
 patch_openclaw_config "$CONFIG_PATH" "$PLUGIN_PATH"
 
 if [[ "$RESTART_GATEWAY" -eq 1 ]]; then
@@ -1722,5 +1868,8 @@ Loop mode (optional):
   --loop-channel/--loop-target for announcements
   --discord-text-channel <id> or --discord-forum-thread <id> as shortcuts
   --discord-forum-target <id> for /gsd-new-epic thread creation
+  --discord-slash-allow-from <id|*> for slash-command sender authorization
   --allow-no-loop-delivery (if you intentionally run silently)
 NEXT
+
+print_gsd_bootstrap_guidance "$PROJECT_ROOT" "$SKILL_DEST/bin/gsd-tools"

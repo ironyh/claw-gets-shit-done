@@ -113,6 +113,10 @@ If required inputs are missing, ask only these:
 Otherwise run non-interactive install with sensible defaults:
 --profile home --no-interactive --force --preset generic
 Enable RalphClaw + AutoClaw + watchdog.
+If Discord is used, add --discord-slash-allow-from "*".
+Then follow installer bootstrap hint:
+- brownfield: /gsd-map-codebase -> /gsd-new-project
+- greenfield: /gsd-new-project
 After install run doctor + gateway health and report results.
 ```
 
@@ -127,6 +131,7 @@ Install CGSD from https://github.com/ironyh/claw-gets-shit-done with:
 --enable-autoclaw --enable-ralphclaw-watchdog --enable-loop-kpi
 --enable-forum-daily-council --enable-forum-weekly-council
 --loop-channel discord --loop-target <target_id>
+--discord-slash-allow-from "*"
 Then run doctor + gateway health.
 ```
 
@@ -304,7 +309,7 @@ export GSD_TOOLS_PATH=/path/to/skills/claw-gets-shit-done/bin/gsd-tools
 
 The alias plugin now resolves `gsd-tools` from multiple candidate locations and supports these env overrides.
 
-Optional plugin behavior config (`openclaw.json` -> `plugins.entries.gsd-command-aliases`):
+Optional plugin behavior config (`config.local.json` in plugin folder):
 - `autoQueueTodo`: auto-sync `/gsd-add-todo` into LOOP files (default `true`)
 - `autoThreadOnNewEpic`: allow `/gsd-new-epic` to attempt forum thread create (default `true`)
 - `discordForumTarget`: forum channel target for thread creation
@@ -312,8 +317,14 @@ Optional plugin behavior config (`openclaw.json` -> `plugins.entries.gsd-command
 - `loopInboxFile` / `loopQueueFile`: override LOOP artifact paths
 
 Installer shortcut:
-- `--discord-forum-target <id>` writes `discordForumTarget` into plugin config automatically.
+- `--discord-forum-target <id>` writes `discordForumTarget` into plugin local config automatically.
+- `--discord-slash-allow-from <id|*>` patches `channels.discord.allowFrom` (default `*`) to prevent slash-command auth gating.
 - If omitted, installer attempts best-effort autodetect from existing config and Discord group directory.
+
+Brownfield bootstrap:
+- Installer now prints first-step guidance based on GSD init context:
+  - Brownfield detected: run `/gsd-map-codebase` then `/gsd-new-project`
+  - Greenfield: run `/gsd-new-project` (or `--auto @PROJECT_IDEA.md` when present)
 
 ## Autonomous Feature Extension (Optional)
 
@@ -375,6 +386,7 @@ Advanced flags:
   --forum-daily-cron "15 9,17 * * *" \
   --forum-weekly-cron "0 9 * * 1" \
   --discord-forum-target <forum_channel_id> \
+  --discord-slash-allow-from "*" \
   --discord-text-channel <channel_id>
 ```
 
@@ -407,6 +419,7 @@ Discord delivery shortcuts:
 - Text channel: `--discord-text-channel <channel_id>`
 - Forum thread: `--discord-forum-thread <thread_id>`
 - Forum channel (for `/gsd-new-epic` thread creation): `--discord-forum-target <forum_channel_id>`
+- Slash auth allowlist entry: `--discord-slash-allow-from <discord_user_id|*>`
 - Generic form still works: `--loop-channel discord --loop-target <id>`
 
 RalphClaw multi-agent:

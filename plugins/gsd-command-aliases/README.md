@@ -27,7 +27,10 @@ Workspace candidates include command context (`ctx.cwd`/`ctx.workingDirectory`),
 
 ## Optional plugin config
 
-`openclaw.plugin.json` supports:
+Use `config.local.json` in the plugin directory (for example `~/.openclaw/extensions/gsd-command-aliases/config.local.json`).
+This is preferred over custom keys in `openclaw.json` on strict-schema OpenClaw builds.
+
+Supported keys:
 
 - `workspaceDir`: explicit workspace root
 - `gsdToolsPath`: explicit gsd-tools binary path
@@ -39,6 +42,13 @@ Workspace candidates include command context (`ctx.cwd`/`ctx.workingDirectory`),
 - `autoThreadOnNewEpic`: `true|false` (default `true`) for `/gsd-new-epic` forum thread creation attempt
 - `discordForumTarget`: Discord forum channel target used by `/gsd-new-epic`
 - `discordAccountId`: optional channel account id for thread create command
+
+## Discord slash authorization
+
+If Discord replies with `⚠️ This command requires authorization.`, ensure sender auth is allowed:
+
+- `channels.discord.allowFrom` in `~/.openclaw/openclaw.json` must include your Discord user id (or `*`).
+- CGSD installer can patch this with: `--discord-slash-allow-from <id|*>`.
 
 ## Deterministic behavior
 
