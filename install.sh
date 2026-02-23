@@ -1209,6 +1209,117 @@ patch_openclaw_config() {
   mv "$tmp" "$cfg"
 }
 
+build_saved_install_args() {
+  local -n _out_ref="$1"
+  _out_ref=(
+    --profile "$PROFILE"
+    --mode "$MODE"
+    --openclaw-dir "$OPENCLAW_DIR"
+    --preset "$PRESET"
+    --skill-dir "$SKILL_DIR"
+    --plugin-path "$PLUGIN_PATH"
+    --config "$CONFIG_PATH"
+  )
+
+  if [[ -n "$WORKSPACE_ROOT" ]]; then
+    _out_ref+=(--workspace-root "$WORKSPACE_ROOT")
+  fi
+
+  local loops_enabled=0
+  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+    loops_enabled=1
+  fi
+
+  if [[ "$loops_enabled" -eq 1 ]]; then
+    _out_ref+=(--project-root "$PROJECT_ROOT")
+    [[ -n "$PROJECT_KEY" ]] && _out_ref+=(--project-key "$PROJECT_KEY")
+
+    [[ "$ENABLE_AUTOLOOP" -eq 1 ]] && _out_ref+=(--enable-ralphclaw)
+    [[ "$ENABLE_CLAWLOOP" -eq 1 ]] && _out_ref+=(--enable-autoclaw)
+    [[ "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 ]] && _out_ref+=(--enable-ralphclaw-watchdog)
+    [[ "$ENABLE_LOOP_KPI" -eq 1 ]] && _out_ref+=(--enable-loop-kpi)
+    [[ "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 ]] && _out_ref+=(--enable-forum-daily-council)
+    [[ "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]] && _out_ref+=(--enable-forum-weekly-council)
+    [[ "$ENABLE_RALPHCLAW_MULTI_AGENT" -eq 1 ]] && _out_ref+=(--ralphclaw-multi-agent)
+
+    _out_ref+=(
+      --loop-agent "$LOOP_AGENT"
+      --loop-model "$LOOP_MODEL"
+      --loop-tz "$LOOP_TZ"
+      --loop-max-files "$LOOP_MAX_FILES"
+      --ralphclaw-subagents-parallel "$RALPHCLAW_SUBAGENTS_PARALLEL"
+      --ralphclaw-cron "$AUTOLOOP_CRON"
+      --autoclaw-cron "$CLAWLOOP_CRON"
+      --loop-kpi-cron "$LOOP_KPI_CRON"
+      --forum-daily-cron "$FORUM_DAILY_CRON"
+      --forum-weekly-cron "$FORUM_WEEKLY_CRON"
+      --loop-inbox-file "$LOOP_INBOX_FILE"
+      --loop-queue-file "$LOOP_QUEUE_FILE"
+      --loop-kpi-file "$LOOP_KPI_FILE"
+      --loop-lock-file "$LOOP_LOCK_FILE"
+    )
+
+    if [[ -n "$LOOP_CHANNEL" ]]; then
+      _out_ref+=(--loop-channel "$LOOP_CHANNEL")
+    fi
+    if [[ -n "$LOOP_TARGET" ]]; then
+      _out_ref+=(--loop-target "$LOOP_TARGET")
+    fi
+    [[ "$ALLOW_NO_LOOP_DELIVERY" -eq 1 ]] && _out_ref+=(--allow-no-loop-delivery)
+  fi
+
+  [[ "$DEDUPE_CRON_JOBS" -eq 0 ]] && _out_ref+=(--no-dedupe-crons)
+  [[ "$DEDUPE_PLUGIN_PATHS" -eq 0 ]] && _out_ref+=(--no-dedupe-plugin-paths)
+  return 0
+}
+
+persist_install_state() {
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "Dry-run active; skipping install state save."
+    return 0
+  fi
+
+  local state_file
+  state_file="${CGSD_INSTALL_STATE_FILE:-$OPENCLAW_DIR/cgsd-install-state.json}"
+  local state_dir
+  state_dir="$(dirname "$state_file")"
+  mkdir -p "$state_dir"
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    warn "python3 not found; skipping install state save ($state_file)"
+    return 0
+  fi
+
+  local -a state_args=()
+  build_saved_install_args state_args
+
+  python3 - "$state_file" "$BUNDLE_DIR/VERSION" "${state_args[@]}" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+state_file = Path(sys.argv[1])
+version_file = Path(sys.argv[2])
+install_args = sys.argv[3:]
+
+bundle_version = ""
+if version_file.exists():
+    bundle_version = version_file.read_text(encoding="utf-8").strip()
+
+payload = {
+    "schema": 1,
+    "savedAt": datetime.now(timezone.utc).isoformat(),
+    "bundleVersion": bundle_version,
+    "installArgs": install_args,
+}
+
+state_file.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+PY
+
+  log "Saved install state: $state_file"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile) PROFILE="${2:-}"; shift 2 ;;
@@ -1362,6 +1473,8 @@ if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_
   log "Configuring autonomous loop workers"
   configure_autonomous_loops
 fi
+
+persist_install_state
 
 cat <<NEXT
 

@@ -39,6 +39,8 @@ Then verify:
 openclaw gateway health
 ```
 
+After first successful install, `update.sh` can usually run without extra flags because it reuses saved install args from `cgsd-install-state.json`.
+
 ## Missing Input Policy
 
 Ask only if these are missing:

@@ -8,6 +8,7 @@ RESTART_GATEWAY=1
 DRY_RUN=0
 FORCE_INSTALL=1
 ALLOW_DIRTY=0
+USE_SAVED_STATE=1
 
 usage() {
   cat <<USAGE
@@ -19,6 +20,7 @@ Options:
   --remote <name>         Git remote (default: origin)
   --ref <branch|tag|sha>  Git ref to update to (default: main)
   --allow-dirty           Allow update with local uncommitted changes
+  --no-saved-state        Do not reuse saved install args from prior install
   --no-restart-gateway    Do not restart gateway after reinstall
   --no-force              Do not pass --force to install.sh
   --dry-run               Print actions only
@@ -27,6 +29,7 @@ Options:
 Examples:
   ./update.sh
   ./update.sh --ref main
+  ./update.sh --no-saved-state
   ./update.sh -- --profile workspace --workspace-root /path/to/workspace --openclaw-dir ~/.openclaw
 USAGE
 }
@@ -73,12 +76,78 @@ checkout_detached_ref() {
   git -C "$ROOT_DIR" checkout --detach "$ref"
 }
 
+find_state_file() {
+  local -a candidates=()
+  if [[ -n "${CGSD_INSTALL_STATE_FILE:-}" ]]; then
+    candidates+=("$CGSD_INSTALL_STATE_FILE")
+  else
+    candidates+=(
+      "$HOME/.openclaw/cgsd-install-state.json"
+      "$HOME/.config/openclaw/cgsd-install-state.json"
+    )
+  fi
+
+  local candidate=""
+  for candidate in "${candidates[@]}"; do
+    if [[ -f "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+load_saved_install_args() {
+  [[ "${#EXTRA_INSTALL_ARGS[@]}" -eq 0 ]] || return 0
+  [[ "$USE_SAVED_STATE" -eq 1 ]] || return 0
+
+  local state_file=""
+  state_file="$(find_state_file || true)"
+  if [[ -z "$state_file" ]]; then
+    echo "[update] No saved install state found; using installer defaults."
+    return 0
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "[update][warn] python3 missing; cannot load saved install args from $state_file"
+    return 0
+  fi
+
+  local -a loaded=()
+  if ! mapfile -d '' -t loaded < <(python3 - "$state_file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+state_file = Path(sys.argv[1])
+data = json.loads(state_file.read_text(encoding="utf-8"))
+args = data.get("installArgs", [])
+if not isinstance(args, list):
+    raise SystemExit(2)
+for arg in args:
+    if not isinstance(arg, str):
+        raise SystemExit(3)
+    sys.stdout.write(arg)
+    sys.stdout.write("\0")
+PY
+  ); then
+    echo "[update][warn] Failed to parse saved install args: $state_file"
+    return 0
+  fi
+
+  if [[ "${#loaded[@]}" -gt 0 ]]; then
+    EXTRA_INSTALL_ARGS=("${loaded[@]}")
+    echo "[update] Loaded saved install args from: $state_file"
+  fi
+}
+
 EXTRA_INSTALL_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --remote) REMOTE="${2:-}"; shift 2 ;;
     --ref) REF="${2:-}"; shift 2 ;;
     --allow-dirty) ALLOW_DIRTY=1; shift ;;
+    --no-saved-state) USE_SAVED_STATE=0; shift ;;
     --no-restart-gateway) RESTART_GATEWAY=0; shift ;;
     --no-force) FORCE_INSTALL=0; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
@@ -150,6 +219,8 @@ else
   fi
   checkout_detached_ref "$REF"
 fi
+
+load_saved_install_args
 
 INSTALL_ARGS=()
 if [[ "$FORCE_INSTALL" -eq 1 ]]; then

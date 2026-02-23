@@ -52,6 +52,11 @@ What it does:
 - re-runs installer (`install.sh --force --restart-gateway`)
 - runs `doctor.sh`
 
+Default behavior:
+- if no extra installer flags are passed, `update.sh` reuses the last saved install args from:
+  - `~/.openclaw/cgsd-install-state.json` (or `CGSD_INSTALL_STATE_FILE`)
+- this lets you use plain `./update.sh` for normal updates
+
 If you use non-default install paths, pass install args after `--`:
 
 ```bash
@@ -66,6 +71,9 @@ Pinned update examples:
 
 # update to a commit (detached checkout)
 ./update.sh --ref <commit_sha>
+
+# ignore saved state and use installer defaults/current env
+./update.sh --no-saved-state
 ```
 
 ## Instructions For Other ClawBots
