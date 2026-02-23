@@ -4,7 +4,7 @@ Packaged GSD workflow for OpenClaw with:
 
 - `skills/claw-gets-shit-done` (upstream-synced GSD wrapper)
 - `plugins/gsd-command-aliases` (`/gsd-add-todo`, `/gsd-plan-phase`, etc.)
-- `install.sh`, `doctor.sh`, `uninstall.sh`
+- `install.sh`, `update.sh`, `doctor.sh`, `uninstall.sh`
 
 This bundle is built to handle different OpenClaw setups (home dirs, workspace installs, custom paths).
 
@@ -28,14 +28,45 @@ Non-interactive example:
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/ironyh/claw-gets-shit-done/main/scripts/bootstrap-install.sh) -- \
   --profile home --no-interactive --force \
-  --preset badgeid \
-  --project-root /home/irony/code/id-koll-nurrse \
+  --preset generic \
+  --project-root /path/to/project \
   --enable-ralphclaw --ralphclaw-multi-agent --ralphclaw-subagents-parallel 3 \
   --enable-autoclaw --enable-ralphclaw-watchdog --enable-loop-kpi \
   --loop-channel discord --loop-target <target_id>
 ```
 
 Agent operators: see `AGENT-INSTALL.md`.
+
+## Update (manual, one command)
+
+No auto-update is required. Use:
+
+```bash
+./update.sh
+```
+
+What it does:
+- verifies clean working tree (unless `--allow-dirty`)
+- updates to branch/tag/sha (`--ref`)
+- uses fast-forward pull for branches, detached checkout for tag/sha
+- re-runs installer (`install.sh --force --restart-gateway`)
+- runs `doctor.sh`
+
+If you use non-default install paths, pass install args after `--`:
+
+```bash
+./update.sh -- --profile workspace --workspace-root /path/to/workspace --openclaw-dir ~/.openclaw
+```
+
+Pinned update examples:
+
+```bash
+# update to a tag (detached checkout)
+./update.sh --ref v0.1.0
+
+# update to a commit (detached checkout)
+./update.sh --ref <commit_sha>
+```
 
 ## Instructions For Other ClawBots
 
@@ -59,7 +90,7 @@ If user wants full autonomous setup, use:
 ```text
 Install CGSD from https://github.com/ironyh/claw-gets-shit-done with:
 --profile home --no-interactive --force
---preset badgeid
+--preset generic
 --project-root /path/to/project
 --enable-ralphclaw --ralphclaw-multi-agent --ralphclaw-subagents-parallel 3
 --enable-autoclaw --enable-ralphclaw-watchdog --enable-loop-kpi
@@ -153,7 +184,8 @@ Enable autonomous loops during install:
 
 ```bash
 ./install.sh --profile home \
-  --preset badgeid \
+  --preset generic \
+  --project-root /path/to/project \
   --enable-ralphclaw \
   --enable-autoclaw \
   --enable-ralphclaw-watchdog \
@@ -208,7 +240,7 @@ Installer can also configure cron workers for autonomous execution:
 - `Loop KPI Weekly` (default: Mondays 08:00) for delivery/blocker reporting
 
 Project scoping rules:
-- Loop workers require explicit `--project-root <path>` (or a preset that resolves one).
+- Loop workers require explicit `--project-root <path>`.
 - Cron jobs are namespaced per project: `Kai RalphClaw [<project-key>]`, etc.
 - `project-key` is derived from project root basename by default; override with `--project-key <slug>`.
 - Loop workers use a shared lock file (default: `<project-root>/.openclaw/locks/loop-worker.lock`) to avoid overlapping runs.
@@ -228,9 +260,9 @@ Advanced flags:
 
 ```bash
 ./install.sh \
-  --preset badgeid \
+  --preset generic \
   --project-root /path/to/workspace-or-project \
-  --project-key badgeid \
+  --project-key my-project \
   --enable-ralphclaw \
   --enable-autoclaw \
   --enable-ralphclaw-watchdog \
@@ -253,15 +285,16 @@ Discord forum thread delivery:
 ```bash
 ./install.sh \
   --project-root /path/to/project \
-  --preset badgeid \
+  --preset generic \
   --enable-ralphclaw \
   --enable-autoclaw \
   --discord-forum-thread <forum_thread_id>
 ```
 
 Useful defaults:
-- `--preset badgeid` (pre-fills project paths + Stockholm timezone + known Discord target)
-- `--preset nurrse` (pre-fills project root + Stockholm timezone)
+- `--preset generic`
+- `--profile home`
+- `--ralphclaw-subagents-parallel 2`
 
 Delivery guardrail:
 - Loop jobs require `--loop-target` when delivery channel is set.
@@ -314,12 +347,15 @@ openclaw plugins list --json | jq '.plugins[] | select(.id=="gsd-command-aliases
 ## Publish Checklist
 
 1. Tag release (`vX.Y.Z`).
-2. Include this folder as release artifact or separate repo root.
+2. Build artifact + checksum:
+   - `./build-release.sh`
+   - outputs `dist/openclaw-gsd-suite-vX.Y.Z.tar.gz`
+   - outputs `dist/openclaw-gsd-suite-vX.Y.Z.tar.gz.sha256`
 3. Add release notes:
    - OpenClaw version tested
    - Upstream GSD commit/tag
    - Breaking changes (if any)
-4. Smoke test on clean machine with `--profile home`.
+4. Smoke test on clean machine with `--profile home` (or run `./scripts/smoke-install.sh`).
 
 ## Attribution
 

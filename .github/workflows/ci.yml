@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq rsync shellcheck
+
+      - name: Version consistency
+        run: ./scripts/check-version.sh
+
+      - name: Bash syntax
+        run: |
+          bash -n install.sh
+          bash -n update.sh
+          bash -n doctor.sh
+          bash -n uninstall.sh
+          bash -n build-release.sh
+          while IFS= read -r script; do
+            bash -n "$script"
+          done < <(find scripts -maxdepth 1 -type f -name '*.sh' | sort)
+
+      - name: ShellCheck
+        run: |
+          shellcheck \
+            install.sh \
+            update.sh \
+            doctor.sh \
+            uninstall.sh \
+            build-release.sh \
+            scripts/*.sh
+
+      - name: Smoke test
+        run: ./scripts/smoke-install.sh

@@ -69,7 +69,7 @@ Options:
   --no-interactive                   Disable guided mode even if no options are passed
   --workspace-root <path>            Workspace root (used by workspace profile)
   --openclaw-dir <path>              OpenClaw home dir (default: ~/.openclaw)
-  --preset <generic|badgeid|nurrse>  Apply project defaults for paths/loop settings
+  --preset <generic>                 Apply neutral defaults (no project-specific paths)
   --skill-dir <path>                 Explicit skill parent directory
   --plugin-path <path>               Explicit plugin install path (full path incl plugin folder)
   --config <path>                    Explicit openclaw.json path
@@ -109,8 +109,8 @@ Examples:
   ./install.sh --profile home
   ./install.sh --profile workspace --workspace-root /srv/openclaw/workspace
   ./install.sh --profile custom --skill-dir /opt/openclaw/skills --plugin-path /opt/openclaw/plugins/gsd-command-aliases
-  ./install.sh --preset badgeid --project-root /home/irony/code/id-koll-nurrse --profile home --enable-ralphclaw --enable-autoclaw --enable-loop-kpi --loop-channel discord --loop-target 1234567890
-  ./install.sh --project-root /home/irony/code/id-koll-nurrse --project-key badgeid --enable-ralphclaw --discord-forum-thread 123456789012345678
+  ./install.sh --preset generic --project-root /path/to/project --profile home --enable-ralphclaw --enable-autoclaw --enable-loop-kpi --loop-channel discord --loop-target 1234567890
+  ./install.sh --project-root /path/to/project --project-key my-project --enable-ralphclaw --discord-forum-thread 123456789012345678
 USAGE
 }
 
@@ -376,7 +376,7 @@ validate_loop_project_scope() {
   [[ "$loops_enabled" -eq 1 ]] || return 0
 
   if [[ "$PROJECT_ROOT_CONFIRMED" -ne 1 ]]; then
-    fail "Loop workers require explicit project scope. Set --project-root <path> (or use --preset badgeid|nurrse)."
+    fail "Loop workers require explicit project scope. Set --project-root <path>."
   fi
   [[ -n "$PROJECT_ROOT" ]] || fail "Loop workers require --project-root."
   [[ -d "$PROJECT_ROOT" ]] || fail "Project root does not exist: $PROJECT_ROOT"
@@ -454,36 +454,8 @@ apply_preset_defaults() {
   case "$PRESET" in
     ""|generic)
       ;;
-    badgeid)
-      if [[ "$PROJECT_ROOT_SET" -eq 0 && -d "/home/irony/code/id-koll-nurrse" ]]; then
-        PROJECT_ROOT="/home/irony/code/id-koll-nurrse"
-        PROJECT_ROOT_CONFIRMED=1
-      fi
-      if [[ "$LOOP_TZ_SET" -eq 0 ]]; then
-        LOOP_TZ="Europe/Stockholm"
-      fi
-      if [[ "$LOOP_TARGET_SET" -eq 0 ]]; then
-        LOOP_CHANNEL="discord"
-        LOOP_TARGET="1473511020998820002"
-      fi
-      if [[ "$LOOP_INBOX_FILE_SET" -eq 0 && -f "/home/irony/clawd/projects/badgeid/IDEAS-INBOX.md" ]]; then
-        LOOP_INBOX_FILE="/home/irony/clawd/projects/badgeid/IDEAS-INBOX.md"
-      fi
-      if [[ "$LOOP_QUEUE_FILE_SET" -eq 0 && -f "/home/irony/clawd/projects/badgeid/CEO-PRIORITY-QUEUE.md" ]]; then
-        LOOP_QUEUE_FILE="/home/irony/clawd/projects/badgeid/CEO-PRIORITY-QUEUE.md"
-      fi
-      ;;
-    nurrse)
-      if [[ "$PROJECT_ROOT_SET" -eq 0 && -d "/home/irony/code/nurrse" ]]; then
-        PROJECT_ROOT="/home/irony/code/nurrse"
-        PROJECT_ROOT_CONFIRMED=1
-      fi
-      if [[ "$LOOP_TZ_SET" -eq 0 ]]; then
-        LOOP_TZ="Europe/Stockholm"
-      fi
-      ;;
     *)
-      fail "Invalid preset: $PRESET"
+      fail "Invalid preset: $PRESET (supported: generic)"
       ;;
   esac
 }
@@ -803,7 +775,7 @@ run_interactive_wizard() {
     LOOP_TZ="$(detect_local_tz)"
   fi
 
-  prompt_choice PRESET "Project preset" "${PRESET:-generic}" "generic" "badgeid" "nurrse"
+  prompt_choice PRESET "Project preset" "${PRESET:-generic}" "generic"
   apply_preset_defaults
 
   prompt_choice PROFILE "Install profile" "$PROFILE" "home" "workspace" "custom"
@@ -1255,7 +1227,7 @@ Loop mode (optional):
   --enable-loop-kpi (default: $LOOP_KPI_CRON)
   --project-root <path> (required when loop workers are enabled)
   --project-key <slug> (optional override; derived from project root by default)
-  --preset badgeid|nurrse|generic
+  --preset generic
   --loop-max-files $LOOP_MAX_FILES
   --loop-lock-file $LOOP_LOCK_FILE
   --ralphclaw-multi-agent (parallel: $RALPHCLAW_SUBAGENTS_PARALLEL)

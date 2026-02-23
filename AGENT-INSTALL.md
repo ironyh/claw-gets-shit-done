@@ -18,7 +18,7 @@ If you have enough context:
 
 ```bash
 ./install.sh --profile home --no-interactive --force \
-  --preset badgeid \
+  --preset generic \
   --project-root /path/to/project \
   --enable-ralphclaw \
   --ralphclaw-multi-agent \
