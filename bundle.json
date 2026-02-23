@@ -1,0 +1,17 @@
+{
+  "name": "openclaw-gsd-suite",
+  "version": "0.1.0",
+  "components": {
+    "skill": "skills/claw-gets-shit-done",
+    "plugin": "plugins/gsd-command-aliases"
+  },
+  "upstream": {
+    "repo": "https://github.com/gsd-build/get-shit-done",
+    "tracking": "skills/claw-gets-shit-done/UPSTREAM.md"
+  },
+  "install": {
+    "script": "install.sh",
+    "doctor": "doctor.sh",
+    "uninstall": "uninstall.sh"
+  }
+}

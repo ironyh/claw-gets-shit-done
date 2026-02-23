@@ -1,0 +1,11 @@
+{
+  "name": "@local/gsd-command-aliases",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./index.js",
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  }
+}

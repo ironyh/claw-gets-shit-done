@@ -1,0 +1,19 @@
+{
+  "id": "gsd-command-aliases",
+  "name": "GSD Command Aliases",
+  "description": "Hyphen slash-command aliases for GSD workflows.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "workspaceDir": {
+        "type": "string",
+        "description": "Optional workspace root that contains .planning and skills/."
+      },
+      "gsdToolsPath": {
+        "type": "string",
+        "description": "Optional absolute path to gsd-tools binary."
+      }
+    }
+  }
+}
