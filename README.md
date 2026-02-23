@@ -10,6 +10,16 @@ Packaged GSD workflow for OpenClaw with:
 
 This bundle is built to handle different OpenClaw setups (home dirs, workspace installs, custom paths).
 
+## Documentation
+
+- Online docs: `https://ironyh.github.io/claw-gets-shit-done/`
+- Local docs index: `docs/index.md`
+- Install/update guide: `docs/install-update.md`
+- Configuration reference: `docs/configuration.md`
+- Discord forum flow: `docs/discord-forum-flow.md`
+- Operations/troubleshooting: `docs/operations.md`
+- Build/release guide: `docs/build-release.md`
+
 ## Install From Repo URL (Agent-Friendly)
 
 If users only provide this GitHub repo URL, OpenClaw can still install automatically.
