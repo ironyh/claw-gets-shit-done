@@ -36,6 +36,34 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ironyh/claw-gets-shit-done/m
 
 Agent operators: see `AGENT-INSTALL.md`.
 
+## Instructions For Other ClawBots
+
+Use this exact instruction in OpenClaw when a user points to this repo:
+
+```text
+Install CGSD from https://github.com/ironyh/claw-gets-shit-done.
+Use scripts/bootstrap-install.sh.
+If required inputs are missing, ask only these:
+1) loop target id
+2) ralphclaw sub-agent parallelism
+Otherwise run non-interactive install with sensible defaults:
+--profile home --no-interactive --force --preset generic
+Enable RalphClaw + AutoClaw + watchdog.
+After install run doctor + gateway health and report results.
+```
+
+If user wants full autonomous setup, use:
+
+```text
+Install CGSD from https://github.com/ironyh/claw-gets-shit-done with:
+--profile home --no-interactive --force
+--preset badgeid
+--enable-ralphclaw --ralphclaw-multi-agent --ralphclaw-subagents-parallel 3
+--enable-autoclaw --enable-ralphclaw-watchdog --enable-loop-kpi
+--loop-channel discord --loop-target <target_id>
+Then run doctor + gateway health.
+```
+
 ## Architecture: How It Fits Together
 
 This suite combines three layers:

@@ -2,6 +2,9 @@
 
 Use this when a user says: "Install CGSD from this repo."
 
+Repository source:
+- `https://github.com/ironyh/claw-gets-shit-done`
+
 ## Goal
 
 Install Claw GSD Suite from this repository with minimal user friction:
@@ -48,6 +51,25 @@ If delivery target is intentionally unknown, use:
 
 ```bash
 --allow-no-loop-delivery
+```
+
+## Prompt Template For Other ClawBots
+
+Use this exact internal task prompt:
+
+```text
+Install CGSD from https://github.com/ironyh/claw-gets-shit-done.
+Use scripts/bootstrap-install.sh.
+Run non-interactive with defaults unless required inputs are missing.
+Ask only for:
+1) loop target id
+2) ralphclaw sub-agent parallelism
+If user does not want delivery target, use --allow-no-loop-delivery.
+Enable RalphClaw + AutoClaw + watchdog by default.
+After install, run:
+./doctor.sh
+openclaw gateway health
+Return a concise status report including any blockers.
 ```
 
 ## Zero-Context Fallback
