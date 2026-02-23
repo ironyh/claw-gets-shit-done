@@ -19,6 +19,7 @@ If you have enough context:
 ```bash
 ./install.sh --profile home --no-interactive --force \
   --preset badgeid \
+  --project-root /path/to/project \
   --enable-ralphclaw \
   --ralphclaw-multi-agent \
   --ralphclaw-subagents-parallel 3 \
@@ -39,8 +40,9 @@ openclaw gateway health
 ## Missing Input Policy
 
 Ask only if these are missing:
-1. `loop target id` (required when loop channel is set)
-2. `ralphclaw sub-agent parallelism` (if multi-agent enabled and user did not specify)
+1. `project root` (required when loop workers are enabled)
+2. `loop target id` (required when loop channel is set)
+3. `ralphclaw sub-agent parallelism` (if multi-agent enabled and user did not specify)
 
 Suggested defaults:
 - `--preset generic`
@@ -62,8 +64,9 @@ Install CGSD from https://github.com/ironyh/claw-gets-shit-done.
 Use scripts/bootstrap-install.sh.
 Run non-interactive with defaults unless required inputs are missing.
 Ask only for:
-1) loop target id
-2) ralphclaw sub-agent parallelism
+1) project root (for loop workers)
+2) loop target id
+3) ralphclaw sub-agent parallelism
 If user does not want delivery target, use --allow-no-loop-delivery.
 Enable RalphClaw + AutoClaw + watchdog by default.
 After install, run:

@@ -21,7 +21,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ironyh/claw-gets-shit-done/m
 Behavior:
 - If run in a TTY with no flags, it launches `./install.sh --interactive`.
 - If flags are passed, it runs non-interactive with those flags.
-- It only asks for missing required inputs (for example delivery target, or desired sub-agent parallelism).
+- It only asks for missing required inputs (for example project root for loops, delivery target, or desired sub-agent parallelism).
 
 Non-interactive example:
 
@@ -29,6 +29,7 @@ Non-interactive example:
 bash <(curl -fsSL https://raw.githubusercontent.com/ironyh/claw-gets-shit-done/main/scripts/bootstrap-install.sh) -- \
   --profile home --no-interactive --force \
   --preset badgeid \
+  --project-root /home/irony/code/id-koll-nurrse \
   --enable-ralphclaw --ralphclaw-multi-agent --ralphclaw-subagents-parallel 3 \
   --enable-autoclaw --enable-ralphclaw-watchdog --enable-loop-kpi \
   --loop-channel discord --loop-target <target_id>
@@ -44,8 +45,9 @@ Use this exact instruction in OpenClaw when a user points to this repo:
 Install CGSD from https://github.com/ironyh/claw-gets-shit-done.
 Use scripts/bootstrap-install.sh.
 If required inputs are missing, ask only these:
-1) loop target id
-2) ralphclaw sub-agent parallelism
+1) project root (if loop workers are enabled)
+2) loop target id
+3) ralphclaw sub-agent parallelism
 Otherwise run non-interactive install with sensible defaults:
 --profile home --no-interactive --force --preset generic
 Enable RalphClaw + AutoClaw + watchdog.
@@ -58,6 +60,7 @@ If user wants full autonomous setup, use:
 Install CGSD from https://github.com/ironyh/claw-gets-shit-done with:
 --profile home --no-interactive --force
 --preset badgeid
+--project-root /path/to/project
 --enable-ralphclaw --ralphclaw-multi-agent --ralphclaw-subagents-parallel 3
 --enable-autoclaw --enable-ralphclaw-watchdog --enable-loop-kpi
 --loop-channel discord --loop-target <target_id>
@@ -204,6 +207,12 @@ Installer can also configure cron workers for autonomous execution:
 - `RalphClaw Watchdog` (default: every 20 min) for stale-loop recovery
 - `Loop KPI Weekly` (default: Mondays 08:00) for delivery/blocker reporting
 
+Project scoping rules:
+- Loop workers require explicit `--project-root <path>` (or a preset that resolves one).
+- Cron jobs are namespaced per project: `Kai RalphClaw [<project-key>]`, etc.
+- `project-key` is derived from project root basename by default; override with `--project-key <slug>`.
+- Loop workers use a shared lock file (default: `<project-root>/.openclaw/locks/loop-worker.lock`) to avoid overlapping runs.
+
 Cron frequency is configurable:
 - `--ralphclaw-cron "<expr>"` (default: `*/15 * * * *`)
 - `--autoclaw-cron "<expr>"` (default: `0 */3 * * *`)
@@ -220,17 +229,19 @@ Advanced flags:
 ```bash
 ./install.sh \
   --preset badgeid \
+  --project-root /path/to/workspace-or-project \
+  --project-key badgeid \
   --enable-ralphclaw \
   --enable-autoclaw \
   --enable-ralphclaw-watchdog \
   --enable-loop-kpi \
   --ralphclaw-multi-agent \
   --ralphclaw-subagents-parallel 3 \
-  --project-root /path/to/workspace-or-project \
   --loop-model kimi-coding/k2p5 \
   --loop-agent main \
   --loop-tz Europe/Stockholm \
   --loop-max-files 12 \
+  --loop-lock-file /path/to/workspace-or-project/.openclaw/locks/loop-worker.lock \
   --ralphclaw-cron "*/15 * * * *" \
   --autoclaw-cron "0 */3 * * *" \
   --loop-kpi-cron "0 8 * * 1" \
@@ -241,6 +252,7 @@ Discord forum thread delivery:
 
 ```bash
 ./install.sh \
+  --project-root /path/to/project \
   --preset badgeid \
   --enable-ralphclaw \
   --enable-autoclaw \
@@ -261,6 +273,11 @@ Useful defaults:
 Delivery guardrail:
 - Loop jobs require `--loop-target` when delivery channel is set.
 - Use `--allow-no-loop-delivery` only if silent execution is intentional.
+
+Multi-project setup:
+- Run installer once per project with different `--project-root`.
+- Use distinct Discord targets per project.
+- Optional: set explicit `--project-key` per project for stable cron naming.
 
 Discord delivery shortcuts:
 - Text channel: `--discord-text-channel <channel_id>`
