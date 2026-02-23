@@ -18,6 +18,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq rsync shellcheck
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install docs dependencies
+        run: pip install -r requirements-docs.txt
+
       - name: Version consistency
         run: ./scripts/check-version.sh
 
@@ -44,3 +52,6 @@ jobs:
 
       - name: Smoke test
         run: ./scripts/smoke-install.sh
+
+      - name: Docs build
+        run: mkdocs build --strict

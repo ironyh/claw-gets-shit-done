@@ -1,0 +1,23 @@
+site_name: Claw Gets Shit Done (CGSD)
+site_description: OpenClaw GSD Suite documentation
+site_url: https://ironyh.github.io/claw-gets-shit-done/
+repo_url: https://github.com/ironyh/claw-gets-shit-done
+repo_name: ironyh/claw-gets-shit-done
+
+theme:
+  name: mkdocs
+
+nav:
+  - Overview: index.md
+  - Install & Update: install-update.md
+  - Build & Release: build-release.md
+  - Configuration: configuration.md
+  - Discord Forum Flow: discord-forum-flow.md
+  - Proposals: proposals.md
+  - Operations: operations.md
+
+markdown_extensions:
+  - tables
+  - fenced_code
+  - toc:
+      permalink: true

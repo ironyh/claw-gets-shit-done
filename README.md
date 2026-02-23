@@ -1,3 +1,5 @@
+![RalphClaw](ralphClaw.png)
+
 # OpenClaw GSD Suite
 
 Packaged GSD workflow for OpenClaw with:
@@ -109,19 +111,22 @@ Then run doctor + gateway health.
 
 ## Architecture: How It Fits Together
 
-This suite combines three layers:
+This suite combines three layers with a strict control order:
 
 1. `GSD` (workflow system)
 - Provides the execution framework and slash commands (`/gsd:*`).
-- Defines planning, execution, verification discipline.
+- Defines planning, execution, and verification discipline.
+- Is the source of truth for what should be worked on next.
 
 2. `AutoClaw` (discovery/extension loop)
-- Finds and shapes valuable next work (features, quality, reliability).
-- Writes structured proposals into the shared inbox/queue contract.
+- Finds and shapes valuable next work only within GSD discipline.
+- Writes structured proposals into the shared inbox/queue contract with explicit `gsd_action`.
 
 3. `RalphClaw` (execution loop)
 - Pulls from the shared queue and ships one bounded increment per run.
-- Verifies changes and updates status/blockers.
+- Executes only GSD-aligned items, verifies changes, and updates status/blockers.
+
+Role/persona councils are advisory. They challenge assumptions, assess risk, and answer scoped questions, but they do not bypass GSD or queue-based execution.
 
 ### Data Contract (shared memory between loops)
 
@@ -130,20 +135,23 @@ This suite combines three layers:
 - KPI file: `PROJECT_ROOT/.openclaw/LOOP-KPI-WEEKLY.md` (default)
 
 Flow:
-- `AutoClaw -> LOOP-INBOX.md -> LOOP-QUEUE.md -> RalphClaw execution -> verification -> status update`
+- `GSD context -> AutoClaw proposal (with gsd_action) -> LOOP-INBOX.md -> LOOP-QUEUE.md -> RalphClaw execution -> verify -> status update`
 
 ### Loop Responsibilities
 
 - `AutoClaw`:
+  - reads existing GSD plan/progress first
   - discovers high-impact opportunities
-  - defines acceptance criteria
+  - defines acceptance criteria + `gsd_action`
   - hands off ready tasks in a structured format
 
 - `RalphClaw`:
-  - picks highest-impact unblocked task
+  - starts from GSD progress/state, then queue
+  - picks highest-impact unblocked GSD-aligned task
   - executes one atomic step
   - verifies (`test/lint/build/smoke`)
-  - writes result or blocker/unblock action
+  - if verify fails: requeues item (never `done` on red verify)
+  - writes result or blocker/unblock action + recommended next GSD action
   - can optionally orchestrate sub-agents in parallel for complex tasks
 
 - `RalphClaw Watchdog`:
@@ -154,19 +162,32 @@ Flow:
   - generates a weekly report from queue + git signal
   - tracks delivery/blocked/test-health trends
 
+- `GSD Bridge`:
+  - runs deterministic sync from GSD `.planning` todos into `LOOP-INBOX` + `LOOP-QUEUE`
+  - keeps queue seeded from existing GSD artifacts (no duplicate planning system)
+  - uses idempotent IDs (`GSD-TODO-*`) so repeat runs do not duplicate entries
+
 ### Forum Flow v2 (Daily + Weekly)
 
 - `Forum Council Daily`:
   - enforces intake card per active thread
+  - treats each forum thread as one epic (`epic_id`)
   - prioritizes user-originated input first (bugs/requests/pain reports)
   - runs timeboxed role discussion (input, challenge, converge)
-  - requires explicit decision gate: `promote_to_queue | need_more_data | reject`
-  - promotes only concrete, testable items to `LOOP-QUEUE`
+  - requires explicit decision gate: `promote_to_queue | need_more_data | reject` + `gsd_action`
+  - promotes only concrete, testable items to `LOOP-QUEUE` as tasks under that epic
 - `Forum Council Weekly`:
   - reviews 7-day thread outcomes, blockers, delivery signals
+  - reviews epic health (`open|active|blocked|done`)
   - reviews user-signal trends and repeated pain points
   - sets next-week priorities and risk mitigations
   - keeps queue focused on measurable outcomes
+  - keeps role output advisory and GSD/queue output executable
+
+Epic model:
+- 1 forum thread = 1 epic (default).
+- `LOOP-QUEUE` contains executable tasks linked by `epic_id`, not whole epics.
+- This keeps planning/discussion in epic scope while execution remains small and verifiable.
 
 Role ping guardrails (in council prompts):
 - allowed: `needs_input_from:<role> reason:"..."`
@@ -179,7 +200,11 @@ Role ping guardrails (in council prompts):
   - `/gsd <command> [args]`
   - `/gsd:<command> [args]`
 - Hyphen aliases for better slash UX:
-  - `/gsd-add-todo`, `/gsd-check-todos`, `/gsd-progress`, `/gsd-discuss-phase`, `/gsd-plan-phase`, `/gsd-execute-phase`, `/gsd-verify-work`, `/gsd-resume-work`, `/gsd-new-project`
+  - `/gsd-add-todo`, `/gsd-check-todos`, `/gsd-new-epic`, `/gsd-progress`, `/gsd-discuss-phase`, `/gsd-plan-phase`, `/gsd-execute-phase`, `/gsd-verify-work`, `/gsd-resume-work`, `/gsd-new-project`
+
+Todo intake behavior:
+- `/gsd-add-todo` writes the todo in `.planning/todos/pending` and (default) syncs one loop intake item immediately.
+- `/gsd-new-epic` creates epic intake in loop files and can create a Discord forum thread when configured.
 
 ## Install Profiles
 
@@ -258,6 +283,17 @@ export GSD_TOOLS_PATH=/path/to/skills/claw-gets-shit-done/bin/gsd-tools
 
 The alias plugin now resolves `gsd-tools` from multiple candidate locations and supports these env overrides.
 
+Optional plugin behavior config (`openclaw.json` -> `plugins.entries.gsd-command-aliases`):
+- `autoQueueTodo`: auto-sync `/gsd-add-todo` into LOOP files (default `true`)
+- `autoThreadOnNewEpic`: allow `/gsd-new-epic` to attempt forum thread create (default `true`)
+- `discordForumTarget`: forum channel target for thread creation
+- `discordAccountId`: optional Discord account id for thread creation
+- `loopInboxFile` / `loopQueueFile`: override LOOP artifact paths
+
+Installer shortcut:
+- `--discord-forum-target <id>` writes `discordForumTarget` into plugin config automatically.
+- If omitted, installer attempts best-effort autodetect from existing config and Discord group directory.
+
 ## Autonomous Feature Extension (Optional)
 
 Installer can also configure cron workers for autonomous execution:
@@ -266,6 +302,7 @@ Installer can also configure cron workers for autonomous execution:
 - `AutoClaw` (default schedule: `0 */3 * * *`) for autonomous feature extension
 - `RalphClaw Watchdog` (default: every 20 min) for stale-loop recovery
 - `Loop KPI Weekly` (default: Mondays 08:00) for delivery/blocker reporting
+- `GSD Bridge` (default: every 10 min) for deterministic GSD->LOOP sync
 - `Forum Council Daily` (default: `15 9,17 * * *`) for discussion triage + decision gate
 - `Forum Council Weekly` (default: `0 9 * * 1`) for strategic alignment
 
@@ -279,6 +316,7 @@ Cron frequency is configurable:
 - `--ralphclaw-cron "<expr>"` (default: `*/15 * * * *`)
 - `--autoclaw-cron "<expr>"` (default: `0 */3 * * *`)
 - `--loop-kpi-cron "<expr>"` (default: `0 8 * * 1`)
+- `--gsd-bridge-cron "<expr>"` (default: `*/10 * * * *`)
 - `--forum-daily-cron "<expr>"` (default: `15 9,17 * * *`)
 - `--forum-weekly-cron "<expr>"` (default: `0 9 * * 1`)
 
@@ -299,6 +337,7 @@ Advanced flags:
   --enable-autoclaw \
   --enable-ralphclaw-watchdog \
   --enable-loop-kpi \
+  --enable-gsd-bridge \
   --enable-forum-daily-council \
   --enable-forum-weekly-council \
   --ralphclaw-multi-agent \
@@ -311,8 +350,10 @@ Advanced flags:
   --ralphclaw-cron "*/15 * * * *" \
   --autoclaw-cron "0 */3 * * *" \
   --loop-kpi-cron "0 8 * * 1" \
+  --gsd-bridge-cron "*/10 * * * *" \
   --forum-daily-cron "15 9,17 * * *" \
   --forum-weekly-cron "0 9 * * 1" \
+  --discord-forum-target <forum_channel_id> \
   --discord-text-channel <channel_id>
 ```
 
@@ -344,6 +385,7 @@ Multi-project setup:
 Discord delivery shortcuts:
 - Text channel: `--discord-text-channel <channel_id>`
 - Forum thread: `--discord-forum-thread <thread_id>`
+- Forum channel (for `/gsd-new-epic` thread creation): `--discord-forum-target <forum_channel_id>`
 - Generic form still works: `--loop-channel discord --loop-target <id>`
 
 RalphClaw multi-agent:
@@ -356,13 +398,23 @@ KPI script (manual run):
 ./scripts/loop-kpi-report.sh --project-root /path/to/project --days 7
 ```
 
+GSD bridge script (manual run):
+```bash
+./scripts/gsd-loop-bridge.sh --project-root /path/to/project
+```
+
 ## Validate
 
 ```bash
 ./doctor.sh
 openclaw gateway health
 openclaw plugins list --json | jq '.plugins[] | select(.id=="gsd-command-aliases")'
+mkdocs build --strict
 ```
+
+Docs deployment:
+- GitHub Pages is configured via `.github/workflows/docs.yml`.
+- On push to `main`, docs are published to `https://ironyh.github.io/claw-gets-shit-done/`.
 
 ## Uninstall
 

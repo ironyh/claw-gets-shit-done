@@ -4,6 +4,7 @@ import path from "node:path";
 const ALIASES = {
   "gsd-add-todo": "add-todo",
   "gsd-check-todos": "check-todos",
+  "gsd-new-epic": "new-epic",
   "gsd-new-project": "new-project",
   "gsd-progress": "progress",
   "gsd-discuss-phase": "discuss-phase",
@@ -218,6 +219,7 @@ function commandHelp() {
     "GSD hyphen-aliaser:",
     "- /gsd-add-todo <text> (deterministisk)",
     "- /gsd-check-todos [area] (deterministisk)",
+    "- /gsd-new-epic <title> (deterministisk + forum best-effort)",
     "- /gsd-progress (deterministisk)",
     "- /gsd-discuss-phase <n>",
     "- /gsd-new-project [--auto]",
@@ -242,6 +244,227 @@ function buildSkillPrompt(gsdCommand, args) {
 
 function userFallbackHint(gsdCommand, args) {
   return `Prova igen med: /gsd ${gsdCommand}${args ? ` ${args}` : ""}`;
+}
+
+function parseBool(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value !== "string") return fallback;
+  const v = value.trim().toLowerCase();
+  if (!v) return fallback;
+  if (["1", "true", "yes", "on"].includes(v)) return true;
+  if (["0", "false", "no", "off"].includes(v)) return false;
+  return fallback;
+}
+
+function safeSlugUpper(text) {
+  const normalized = (text ?? "")
+    .toString()
+    .trim()
+    .replace(/\.md$/i, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toUpperCase();
+  return normalized || "UNTITLED";
+}
+
+function defaultLoopFiles(workspaceDir) {
+  const root = path.join(workspaceDir, ".openclaw");
+  return {
+    inboxFile: path.join(root, "LOOP-INBOX.md"),
+    queueFile: path.join(root, "LOOP-QUEUE.md"),
+  };
+}
+
+function resolveLoopConfig(api, workspaceDir) {
+  const cfg = getPluginConfig(api);
+  const defaults = defaultLoopFiles(workspaceDir);
+  const inboxFile = expandPath(cfg.loopInboxFile) || defaults.inboxFile;
+  const queueFile = expandPath(cfg.loopQueueFile) || defaults.queueFile;
+  const epicId = (cfg.defaultEpicId ?? "EPIC-GSD-BACKLOG").toString().trim() || "EPIC-GSD-BACKLOG";
+  const epicTitle = (cfg.defaultEpicTitle ?? "GSD Backlog").toString().trim() || "GSD Backlog";
+  const discordForumTarget = (
+    cfg.discordForumTarget ??
+    process.env.CGSD_DISCORD_FORUM_TARGET ??
+    ""
+  )
+    .toString()
+    .trim();
+  const discordAccountId = (cfg.discordAccountId ?? "").toString().trim();
+
+  return {
+    inboxFile,
+    queueFile,
+    epicId,
+    epicTitle,
+    autoQueueTodo: parseBool(cfg.autoQueueTodo, true),
+    autoThreadOnNewEpic: parseBool(cfg.autoThreadOnNewEpic, true),
+    discordForumTarget,
+    discordAccountId,
+  };
+}
+
+function ensureLoopFiles(inboxFile, queueFile) {
+  fs.mkdirSync(path.dirname(inboxFile), { recursive: true });
+  fs.mkdirSync(path.dirname(queueFile), { recursive: true });
+  if (!fs.existsSync(inboxFile)) fs.writeFileSync(inboxFile, "# LOOP-INBOX\n\n", "utf8");
+  if (!fs.existsSync(queueFile)) fs.writeFileSync(queueFile, "# LOOP-QUEUE\n\n", "utf8");
+}
+
+function queueItemExists(filePath, id) {
+  if (!id || !fs.existsSync(filePath)) return false;
+  const content = fs.readFileSync(filePath, "utf8");
+  return content.includes(`- id: ${id}`);
+}
+
+function appendInboxItem(inboxFile, item) {
+  const lines = [
+    "",
+    `- id: ${item.id}`,
+    `  title: ${item.title}`,
+    `  type: ${item.type ?? "quality"}`,
+    `  epic_id: ${item.epicId}`,
+    `  epic_title: ${item.epicTitle}`,
+    `  epic_thread: ${item.epicThread ?? "n/a"}`,
+    `  gsd_action: ${item.gsdAction}`,
+    `  gsd_phase: ${item.gsdPhase ?? ""}`,
+    `  impact: ${item.impact ?? "medium"}`,
+    `  effort: ${item.effort ?? "s"}`,
+    "  acceptance:",
+    "    - [ ] mapped to active GSD phase/todo",
+    "    - [ ] verification passes",
+    `  next_step: ${item.nextStep ?? "review and prioritize"}`,
+    `  owner: ${item.owner ?? "ralphclaw"}`,
+    `  status: ${item.status ?? "ready"}`,
+    `  source_area: ${item.sourceArea ?? "general"}`,
+  ];
+  fs.appendFileSync(inboxFile, `${lines.join("\n")}\n`, "utf8");
+}
+
+function appendQueueItem(queueFile, item) {
+  const lines = [
+    "",
+    `- id: ${item.id}`,
+    `  title: ${item.title}`,
+    `  source: ${item.source ?? "GSD-TODO"}`,
+    `  source_path: ${item.sourcePath ?? ".planning/todos/pending"}`,
+    `  epic_id: ${item.epicId}`,
+    `  epic_thread: ${item.epicThread ?? "n/a"}`,
+    `  gsd_action: ${item.gsdAction}`,
+    `  gsd_phase: ${item.gsdPhase ?? ""}`,
+    `  priority: ${item.priority ?? "P1"}`,
+    `  status: ${item.status ?? "ready"}`,
+    `  verify_status: ${item.verifyStatus ?? "pending"}`,
+    "  verify_failures:",
+    "  retry_count: 0",
+    `  owner: ${item.owner ?? "ralphclaw"}`,
+    "  blocker:",
+    "  unblock_next_step:",
+  ];
+  fs.appendFileSync(queueFile, `${lines.join("\n")}\n`, "utf8");
+}
+
+async function getProgressMeta(api, workspaceDir) {
+  try {
+    const progress = await runGsdToolsJson(api, workspaceDir, ["init", "progress"]);
+    const currentPhase = progress?.current_phase?.number
+      ? String(progress.current_phase.number).trim()
+      : "";
+    return {
+      roadmapExists: !!progress?.roadmap_exists,
+      currentPhase,
+    };
+  } catch {
+    return {
+      roadmapExists: false,
+      currentPhase: "",
+    };
+  }
+}
+
+async function syncTodoToLoop(api, workspaceDir, todo) {
+  const loop = resolveLoopConfig(api, workspaceDir);
+  ensureLoopFiles(loop.inboxFile, loop.queueFile);
+
+  const id = `GSD-TODO-${safeSlugUpper(todo.filename ?? todo.path ?? todo.title)}`;
+  if (queueItemExists(loop.inboxFile, id) || queueItemExists(loop.queueFile, id)) {
+    return { synced: false, reason: "exists", id };
+  }
+
+  const progressMeta = await getProgressMeta(api, workspaceDir);
+  const gsdAction = progressMeta.roadmapExists ? "/gsd-resume-work" : "/gsd-new-project";
+  const gsdPhase = progressMeta.currentPhase;
+
+  appendInboxItem(loop.inboxFile, {
+    id,
+    title: todo.title,
+    epicId: loop.epicId,
+    epicTitle: loop.epicTitle,
+    gsdAction,
+    gsdPhase,
+    nextStep: `sync from ${todo.path}`,
+    sourceArea: todo.area,
+  });
+
+  appendQueueItem(loop.queueFile, {
+    id,
+    title: todo.title,
+    sourcePath: todo.path,
+    epicId: loop.epicId,
+    gsdAction,
+    gsdPhase,
+  });
+
+  return {
+    synced: true,
+    id,
+    inboxFile: toPosixRel(workspaceDir, loop.inboxFile),
+    queueFile: toPosixRel(workspaceDir, loop.queueFile),
+  };
+}
+
+async function createDiscordEpicThread(api, loopConfig, epicTitle, epicId) {
+  if (!loopConfig.discordForumTarget) {
+    return { created: false, reason: "missing_target" };
+  }
+
+  const argv = [
+    "openclaw",
+    "message",
+    "thread",
+    "create",
+    "--channel",
+    "discord",
+    "--target",
+    loopConfig.discordForumTarget,
+    "--thread-name",
+    epicTitle,
+    "--message",
+    `Epic ${epicId}\nCreated via /gsd-new-epic\n\nUse this thread for scope, decisions, and acceptance.`,
+    "--json",
+  ];
+  if (loopConfig.discordAccountId) {
+    argv.push("--account", loopConfig.discordAccountId);
+  }
+
+  try {
+    const out = await runCommand(api, argv, { timeoutMs: 45000 });
+    let threadId = "";
+    try {
+      const parsed = JSON.parse(out);
+      threadId =
+        parsed?.threadId?.toString?.() ||
+        parsed?.id?.toString?.() ||
+        parsed?.result?.threadId?.toString?.() ||
+        parsed?.result?.id?.toString?.() ||
+        "";
+    } catch {
+      // no-op
+    }
+    return { created: true, threadId: threadId.trim() };
+  } catch (err) {
+    return { created: false, reason: truncate(String(err?.message ?? err), 300) };
+  }
 }
 
 async function handleAddTodo(api, ctx) {
@@ -312,16 +535,117 @@ async function handleAddTodo(api, ctx) {
     commitLine = `Commit: skipped (${truncate(String(err?.message ?? err), 120)})`;
   }
 
+  const loopConfig = resolveLoopConfig(api, workspaceDir);
+  let loopLine = "Loop sync: disabled";
+  if (loopConfig.autoQueueTodo) {
+    try {
+      const syncResult = await syncTodoToLoop(api, workspaceDir, {
+        filename,
+        path: relativePath,
+        title,
+        area,
+      });
+      if (syncResult.synced) {
+        loopLine = `Loop sync: queued (${syncResult.id})`;
+      } else {
+        loopLine = `Loop sync: skipped (${syncResult.reason})`;
+      }
+    } catch (err) {
+      loopLine = `Loop sync: failed (${truncate(String(err?.message ?? err), 120)})`;
+    }
+  }
+
   return {
     text: [
       `Todo sparad: ${relativePath}`,
       `Title: ${title}`,
       `Area: ${area}`,
       commitLine,
+      loopLine,
       "",
       "Nästa:",
       `- /gsd-check-todos ${area}`,
       "- /gsd-progress",
+    ].join("\n"),
+  };
+}
+
+async function handleNewEpic(api, ctx) {
+  const args = (ctx.args ?? "").trim();
+  if (!args) {
+    return {
+      text: "Usage: /gsd-new-epic <title>",
+    };
+  }
+
+  const workspaceDir = resolveWorkspaceDir(api, ctx);
+  const loop = resolveLoopConfig(api, workspaceDir);
+  ensureLoopFiles(loop.inboxFile, loop.queueFile);
+
+  const epicTitle = args[0].toUpperCase() + args.slice(1);
+  const epicId = `EPIC-${safeSlugUpper(epicTitle)}`;
+  const intakeId = `${epicId}-INTAKE`;
+
+  if (queueItemExists(loop.inboxFile, intakeId) || queueItemExists(loop.queueFile, intakeId)) {
+    return {
+      text: [
+        `Epic finns redan: ${epicId}`,
+        `Inbox: ${toPosixRel(workspaceDir, loop.inboxFile)}`,
+      ].join("\n"),
+    };
+  }
+
+  let epicThread = "n/a";
+  let threadLine = "Forum thread: skipped";
+  if (loop.autoThreadOnNewEpic) {
+    const thread = await createDiscordEpicThread(api, loop, epicTitle, epicId);
+    if (thread.created) {
+      epicThread = thread.threadId || loop.discordForumTarget || "discord";
+      threadLine = `Forum thread: created (${epicThread})`;
+    } else if (thread.reason === "missing_target") {
+      threadLine = "Forum thread: skipped (configure discordForumTarget)";
+    } else {
+      threadLine = `Forum thread: failed (${thread.reason})`;
+    }
+  }
+
+  appendInboxItem(loop.inboxFile, {
+    id: intakeId,
+    title: `${epicTitle} (Epic intake)`,
+    type: "feature",
+    epicId,
+    epicTitle,
+    epicThread,
+    gsdAction: "/gsd-discuss-phase",
+    gsdPhase: "",
+    impact: "high",
+    effort: "m",
+    nextStep: "break epic into executable tasks and promote one item",
+    sourceArea: "planning",
+  });
+
+  appendQueueItem(loop.queueFile, {
+    id: `${epicId}-DISCOVERY`,
+    title: `${epicTitle} - discovery and scope`,
+    source: "EPIC-INTAKE",
+    sourcePath: toPosixRel(workspaceDir, loop.inboxFile),
+    epicId,
+    epicThread,
+    gsdAction: "/gsd-discuss-phase",
+    gsdPhase: "",
+    priority: "P1",
+  });
+
+  return {
+    text: [
+      `Epic skapad: ${epicId}`,
+      threadLine,
+      `Inbox: ${toPosixRel(workspaceDir, loop.inboxFile)}`,
+      `Queue: ${toPosixRel(workspaceDir, loop.queueFile)}`,
+      "",
+      "Nästa:",
+      "- /gsd-discuss-phase 1",
+      "- /gsd-plan-phase 1",
     ].join("\n"),
   };
 }
@@ -390,6 +714,7 @@ async function forwardToGsd(api, ctx, gsdCommand) {
   if (gsdCommand === "add-todo") return await handleAddTodo(api, ctx);
   if (gsdCommand === "check-todos") return await handleCheckTodos(api, ctx);
   if (gsdCommand === "progress") return await handleProgress(api, ctx);
+  if (gsdCommand === "new-epic") return await handleNewEpic(api, ctx);
 
   const sender = pickSender(ctx);
   if (!sender) {

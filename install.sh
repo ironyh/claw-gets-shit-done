@@ -13,6 +13,7 @@ ENABLE_AUTOLOOP=0
 ENABLE_CLAWLOOP=0
 ENABLE_AUTOLOOP_WATCHDOG=0
 ENABLE_LOOP_KPI=0
+ENABLE_GSD_BRIDGE=0
 ENABLE_FORUM_DAILY_COUNCIL=0
 ENABLE_FORUM_WEEKLY_COUNCIL=0
 ALLOW_NO_LOOP_DELIVERY=0
@@ -32,6 +33,7 @@ PROJECT_ROOT="${PROJECT_ROOT:-$PWD}"
 PROJECT_KEY="${PROJECT_KEY:-}"
 LOOP_CHANNEL="${LOOP_CHANNEL:-discord}"
 LOOP_TARGET="${LOOP_TARGET:-}"
+DISCORD_FORUM_TARGET="${DISCORD_FORUM_TARGET:-}"
 LOOP_AGENT="${LOOP_AGENT:-main}"
 LOOP_MODEL="${LOOP_MODEL:-kimi-coding/k2p5}"
 LOOP_TZ="${LOOP_TZ:-UTC}"
@@ -45,6 +47,7 @@ CLAWLOOP_CRON="${CLAWLOOP_CRON:-0 */3 * * *}"
 CLAWLOOP_THINKING="${CLAWLOOP_THINKING:-high}"
 CLAWLOOP_TIMEOUT_SECONDS="${CLAWLOOP_TIMEOUT_SECONDS:-1800}"
 LOOP_KPI_CRON="${LOOP_KPI_CRON:-0 8 * * 1}"
+GSD_BRIDGE_CRON="${GSD_BRIDGE_CRON:-*/10 * * * *}"
 FORUM_DAILY_CRON="${FORUM_DAILY_CRON:-15 9,17 * * *}"
 FORUM_WEEKLY_CRON="${FORUM_WEEKLY_CRON:-0 9 * * 1}"
 LOOP_INBOX_FILE="${LOOP_INBOX_FILE:-}"
@@ -88,6 +91,7 @@ Options:
   --loop-target <id>                 Delivery target id (channel/thread/user id)
   --discord-text-channel <id>        Shortcut: --loop-channel discord --loop-target <id>
   --discord-forum-thread <id>        Shortcut: --loop-channel discord --loop-target <thread_id>
+  --discord-forum-target <id>        Discord forum channel target for /gsd-new-epic thread creation (auto-detected if omitted, best effort)
   --loop-agent <id>                  Agent id for loop jobs (default: main)
   --loop-model <id>                  Model id for loop jobs (default: kimi-coding/k2p5)
   --loop-tz <iana_tz>                Timezone for loop jobs (default: UTC)
@@ -97,6 +101,8 @@ Options:
   --allow-no-loop-delivery           Allow loop jobs without delivery target
   --enable-loop-kpi                  Configure weekly KPI/report cron job
   --loop-kpi-cron <expr>             Cron expression for KPI report (default: 0 8 * * 1)
+  --enable-gsd-bridge                Configure deterministic GSD->LOOP sync cron job
+  --gsd-bridge-cron <expr>           Cron expression for GSD bridge (default: */10 * * * *)
   --forum-daily-cron <expr>          Cron expression for daily forum council (default: 15 9,17 * * *)
   --forum-weekly-cron <expr>         Cron expression for weekly forum council (default: 0 9 * * 1)
   --loop-inbox-file <path>           Shared proposal inbox (AutoClaw writes here)
@@ -203,6 +209,81 @@ detect_plugin_path_candidates() {
       [[ -d "$d/plugins/gsd-command-aliases" ]] && printf '%s\n' "$d/plugins/gsd-command-aliases"
     done < <(emit_parent_dirs)
   } | unique_lines
+}
+
+detect_discord_forum_target() {
+  local cfg="${1:-$CONFIG_PATH}"
+  local candidate=""
+
+  if [[ -n "${DISCORD_FORUM_TARGET:-}" ]]; then
+    printf '%s' "$DISCORD_FORUM_TARGET"
+    return 0
+  fi
+
+  if [[ -f "$cfg" ]] && command -v jq >/dev/null 2>&1; then
+    candidate="$(jq -r '.plugins.entries["gsd-command-aliases"].discordForumTarget // empty' "$cfg" 2>/dev/null || true)"
+    if [[ -n "$candidate" && "$candidate" != "null" ]]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  fi
+
+  if [[ "${LOOP_CHANNEL:-}" == "discord" && -n "${LOOP_TARGET:-}" ]]; then
+    if [[ "$LOOP_TARGET" == channel:* ]]; then
+      printf '%s' "$LOOP_TARGET"
+      return 0
+    fi
+  fi
+
+  if command -v openclaw >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+    local raw payload selected
+    raw="$(openclaw directory groups list --channel discord --json 2>/dev/null || true)"
+    payload="$(printf '%s\n' "$raw" | sed '/^\[plugins\]/d')"
+    selected="$(python3 - "$payload" "${LOOP_TARGET:-}" <<'PY'
+import json
+import sys
+
+raw = sys.argv[1]
+loop_target = (sys.argv[2] or "").strip()
+
+try:
+    data = json.loads(raw)
+except Exception:
+    data = []
+
+if not isinstance(data, list):
+    data = []
+
+ids = []
+for entry in data:
+    if isinstance(entry, dict):
+        v = str(entry.get("id") or "").strip()
+        if v:
+            ids.append(v)
+
+if not ids:
+    print("")
+    raise SystemExit(0)
+
+if loop_target:
+    for value in ids:
+        if value == loop_target or value.endswith(f":{loop_target}"):
+            print(value)
+            raise SystemExit(0)
+
+if len(ids) == 1:
+    print(ids[0])
+else:
+    print("")
+PY
+)"
+    if [[ -n "$selected" ]]; then
+      printf '%s' "$selected"
+      return 0
+    fi
+  fi
+
+  printf ''
 }
 
 prompt_choice() {
@@ -378,7 +459,7 @@ resolve_default_loop_files() {
 
 validate_loop_project_scope() {
   local loops_enabled=0
-  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
     loops_enabled=1
   fi
   [[ "$loops_enabled" -eq 1 ]] || return 0
@@ -411,12 +492,17 @@ ensure_loop_handoff_files() {
     cat > "$LOOP_INBOX_FILE" <<EOF
 # LOOP-INBOX
 
-AutoClaw proposal inbox.
+AutoClaw proposal inbox (GSD-first).
 
 Template:
 - id: AUTOCLAW-YYYYMMDD-HHMM
 - title:
 - type: feature|quality|research|tech-debt
+- epic_id:
+- epic_title:
+- epic_thread:
+- gsd_action: /gsd-add-todo|/gsd-plan-phase|/gsd-discuss-phase
+- gsd_phase: optional
 - impact: high|medium|low
 - effort: s|m|l
 - acceptance:
@@ -431,14 +517,21 @@ EOF
     cat > "$LOOP_QUEUE_FILE" <<EOF
 # LOOP-QUEUE
 
-RalphClaw execution queue.
+RalphClaw execution queue (GSD-first).
 
 Template:
 - id:
 - title:
 - source: LOOP-INBOX
+- epic_id:
+- epic_thread:
+- gsd_action:
+- gsd_phase:
 - priority: P0|P1|P2
 - status: ready|in_progress|blocked|done
+- verify_status: pending|passed|failed
+- verify_failures:
+- retry_count: 0
 - owner: ralphclaw
 - blocker:
 - unblock_next_step:
@@ -470,7 +563,7 @@ apply_preset_defaults() {
 
 validate_loop_delivery() {
   local loops_enabled=0
-  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
     loops_enabled=1
   fi
   [[ "$loops_enabled" -eq 1 ]] || return 0
@@ -609,6 +702,7 @@ Multi-sub-agent mode (enabled):
 - Use sub-agents only when task complexity justifies delegation.
 - Split work into independent sub-tasks and run at most $RALPHCLAW_SUBAGENTS_PARALLEL simultaneously.
 - Recommended role mix: programmer, QA, designer (when UI), analyst (when metrics/data needed).
+- Roles are execution helpers only. They do not redefine roadmap/priority; GSD + queue remain source of truth.
 - Integrate all outputs in main RalphClaw session, run verification, then write one consolidated status update.
 - If a sub-agent fails or times out, continue with remaining sub-agents and complete with best reversible next step.
 EOF
@@ -629,17 +723,35 @@ Worker lock file:
 - $LOOP_LOCK_FILE
 
 Mission:
-Ship one meaningful, reversible step per run across active projects.
+Execute one meaningful, reversible GSD-aligned step per run across active projects.
 
 Run protocol:
 1) Acquire non-blocking lock on $LOOP_LOCK_FILE before any work.
    - If lock is already held: report "SKIP_LOCK_HELD" and exit quickly.
-2) Read $LOOP_QUEUE_FILE first, then $LOOP_INBOX_FILE, then project context docs.
-3) Pick ONE highest-impact unblocked task.
-4) Execute one atomic step (8-20 min).
-5) Run relevant verification (tests/lint/build/smoke).
-6) Write result + next step to memory and queue docs.
-7) Report concise summary with changed files and verification.
+2) Use GSD as primary control plane:
+   - confirm current plan/progress with /gsd-progress (or equivalent GSD state files)
+   - if no GSD project exists, initialize with /gsd-new-project, write bootstrap note, and stop this run
+3) Read $LOOP_QUEUE_FILE first, then $LOOP_INBOX_FILE, and select ONE queue item mapped to GSD phase/todo.
+4) Execute one atomic step (8-20 min), aligned with active GSD phase.
+5) Run relevant verification (tests/lint/build/smoke) and apply /gsd-verify-work discipline.
+6) Write result + next step to queue docs, including recommended next GSD command.
+7) Report concise summary with changed files, verification, and gsd_next_action.
+
+Verification gate (mandatory):
+- If verification fails:
+  - NEVER mark item as done.
+  - Push item back to queue for retry:
+    - status: ready
+    - verify_status: failed
+    - verify_failures: concise failing signal
+    - retry_count: increment by 1
+    - next_step: smallest fix to regain green verify
+  - Add gsd_next_action that returns to verify path (usually /gsd-verify-work).
+- If verification passes:
+  - set verify_status: passed
+  - then allow status: done (or split follow-up item if scope remains).
+- If retry_count >= 3:
+  - mark blocked with explicit root-cause hypothesis + required input.
 
 If blocked:
 - Document exact blocker + unblock action in $LOOP_QUEUE_FILE:
@@ -676,33 +788,46 @@ Worker lock file:
 - $LOOP_LOCK_FILE
 
 Mission:
-Continuously extend product value using GSD-style execution.
+Continuously extend product value through GSD-first backlog shaping.
 
 Run protocol:
 1) Acquire non-blocking lock on $LOOP_LOCK_FILE before any work.
    - If lock is already held: report "SKIP_LOCK_HELD" and exit quickly.
-2) Scan roadmap/backlog/docs (ROADMAP, TODO, IDEAS, issues, TODO/FIXME).
-3) Select ONE feature extension or quality enhancement with highest impact.
-4) Define acceptance criteria and smallest next increment.
+2) Start with GSD status and existing roadmap:
+   - review /gsd-progress (or equivalent GSD state files)
+   - prefer gaps in current phases/todos over net-new ideas
+3) Scan roadmap/backlog/docs (ROADMAP, TODO, IDEAS, issues, TODO/FIXME) for one high-impact candidate.
+4) Define acceptance criteria, smallest next increment, and required GSD command.
 5) Append proposal to $LOOP_INBOX_FILE using this contract:
    - id: AUTOCLAW-YYYYMMDD-HHMM
    - title:
    - type: feature|quality|research|tech-debt
+   - epic_id:
+   - epic_title:
+   - epic_thread:
+   - gsd_action: /gsd-add-todo|/gsd-plan-phase|/gsd-discuss-phase
+   - gsd_phase: optional
    - impact: high|medium|low
    - effort: s|m|l
    - acceptance: checklist
    - next_step:
    - owner: ralphclaw
    - status: ready
-6) Promote highest-impact ready item into $LOOP_QUEUE_FILE with priority (P0/P1/P2).
-7) Implement one bounded increment end-to-end.
-8) Run verification and document outcome + next increment.
+6) Promote highest-impact ready item into $LOOP_QUEUE_FILE with priority (P0/P1/P2), matching gsd_action, and epic_id linkage.
+7) If a ready queue item is unblocked and GSD-aligned, implement one bounded increment end-to-end.
+8) Run verification and document outcome + next increment + gsd_next_action.
+
+Epic mapping:
+- Treat each forum thread as one epic by default.
+- Use epic_id like: EPIC-<thread_id> (or stable slug when no thread id exists).
+- Queue items are deliverable tasks under one epic_id, not whole epics.
 
 Rules:
 - Prefer reversible changes.
 - Avoid destructive operations.
 - Max changed files this run: $LOOP_MAX_FILES
 - If proposal cannot be implemented now, still ship structured handoff entry.
+- Personas/roles are optional reviewers only; they cannot bypass GSD queue discipline.
 - Execute -> report (no permission-seeking unless irreversible).
 EOF
 }
@@ -729,6 +854,36 @@ Then post concise summary:
 EOF
 }
 
+build_gsd_bridge_message() {
+  cat <<EOF
+GSD LOOP BRIDGE (deterministic sync)
+
+Project root:
+- $PROJECT_ROOT
+Queue files:
+- Inbox: $LOOP_INBOX_FILE
+- Queue: $LOOP_QUEUE_FILE
+
+Run deterministic bridge script:
+bash $BUNDLE_DIR/scripts/gsd-loop-bridge.sh \
+  --project-root "$PROJECT_ROOT" \
+  --inbox "$LOOP_INBOX_FILE" \
+  --queue "$LOOP_QUEUE_FILE" \
+  --epic-id "EPIC-GSD-BACKLOG" \
+  --epic-title "GSD Backlog Sync"
+
+Then post concise summary:
+- discovered todos
+- added queue items
+- skipped existing
+
+Rules:
+- Do not overwrite manual queue entries.
+- Use idempotent sync behavior only.
+- Keep GSD as source-of-truth for backlog state.
+EOF
+}
+
 build_forum_daily_council_message() {
   cat <<EOF
 FORUM FLOW V2 - DAILY COUNCIL
@@ -742,7 +897,7 @@ Queue files:
 - Queue: $LOOP_QUEUE_FILE
 
 Mission:
-Turn forum discussions into clear daily decisions with minimal noise.
+Turn forum discussions into clear daily decisions that feed GSD, with minimal noise.
 
 Protocol:
 1) Review active discussion threads and today's new entries.
@@ -753,6 +908,9 @@ Protocol:
    - friction/pain reports from production usage
    Mark each as: severity + frequency + affected user segment.
 3) For each active thread, enforce an intake card:
+   - epic_id (EPIC-<thread_id>)
+   - epic_title
+   - epic_thread link/id
    - problem
    - user impact
    - acceptance criteria
@@ -761,7 +919,8 @@ Protocol:
    - Round 1: input (VD, Backend, QA; include UI-UX/SEO-SEM when relevant)
    - Round 2: challenge (role-to-role questions)
    - Round 3: converge (final recommendation)
-   User input must be explicitly addressed in this discussion before decision.
+   User input must be explicitly addressed before decision.
+   Roles are advisors. They answer scoped questions and provide evidence/risk, but do not own execution routing.
 5) Role ping guardrails:
    - roles may request input from another role with:
      needs_input_from:<role> reason:"..."
@@ -769,9 +928,11 @@ Protocol:
    - max 2 role-to-role pings per role per thread per daily run
 6) Decision gate (required per thread):
    - promote_to_queue | need_more_data | reject
+   - gsd_action: /gsd-add-todo|/gsd-plan-phase|/gsd-discuss-phase|none
    Include: "user_signal_handled: yes|no" (must be yes for user-originated threads).
 7) If decision is promote_to_queue:
    - append/update one queue item in $LOOP_QUEUE_FILE
+   - include epic_id + epic_thread on the queue item
    - include source thread link/id and acceptance checklist
 8) If decision is need_more_data:
    - list exact missing data and owner
@@ -790,6 +951,7 @@ Rules:
 - Keep discussion objective and evidence-driven.
 - No decision without explicit acceptance criteria.
 - Prefer one promotable, reversible item over broad planning.
+- Every promoted decision must map to a concrete GSD action.
 EOF
 }
 
@@ -807,11 +969,12 @@ Queue files:
 - KPI: $LOOP_KPI_FILE
 
 Mission:
-Run strategic weekly review across forum discussions and delivery outcomes.
+Run strategic weekly review across forum discussions and delivery outcomes, anchored in GSD.
 
 Protocol:
 1) Review last 7 days:
    - forum decisions
+   - epic health (open/active/blocked/done)
    - queue throughput
    - blocked items
    - test/quality signals
@@ -821,13 +984,14 @@ Protocol:
    - Backend
    - QA
    - plus UI-UX/SEO-SEM/DevOps/Security when needed
+   Roles are advisory and risk-oriented; GSD artifacts remain the execution source of truth.
 3) Consolidate into:
    - top 3 priorities for next 7 days
    - top 3 risks + mitigation owners
    - top 3 experiments (reversible)
 4) Ensure decision statuses are explicit:
    - promote_to_queue | need_more_data | reject
-5) Promote only concrete, testable items to $LOOP_QUEUE_FILE.
+5) Promote only concrete, testable items to $LOOP_QUEUE_FILE with explicit gsd_action.
 6) Write weekly planning notes to $LOOP_INBOX_FILE.
 7) Post final summary:
    - what changed this week
@@ -839,6 +1003,7 @@ Rules:
 - Prefer fewer high-confidence priorities over long lists.
 - Every promoted item must include owner + acceptance criteria.
 - Keep decisions aligned with measurable outcomes.
+- Consensus notes cannot bypass GSD queueing and verification discipline.
 EOF
 }
 
@@ -848,6 +1013,7 @@ configure_autonomous_loops() {
   local autoclaw_job_name="Kai AutoClaw [$PROJECT_KEY]"
   local watchdog_job_name="Kai RalphClaw Watchdog [$PROJECT_KEY]"
   local kpi_job_name="Kai Loop KPI Weekly [$PROJECT_KEY]"
+  local gsd_bridge_job_name="Kai GSD Bridge [$PROJECT_KEY]"
   local forum_daily_job_name="Kai Forum Council Daily [$PROJECT_KEY]"
   local forum_weekly_job_name="Kai Forum Council Weekly [$PROJECT_KEY]"
 
@@ -883,6 +1049,15 @@ configure_autonomous_loops() {
       "$kpi_job_name" \
       "$LOOP_KPI_CRON" \
       "$(build_loop_kpi_message)" \
+      "low" \
+      "600"
+  fi
+
+  if [[ "$ENABLE_GSD_BRIDGE" -eq 1 ]]; then
+    upsert_loop_cron_job \
+      "$gsd_bridge_job_name" \
+      "$GSD_BRIDGE_CRON" \
+      "$(build_gsd_bridge_message)" \
       "low" \
       "600"
   fi
@@ -1018,6 +1193,10 @@ run_interactive_wizard() {
         else
           prompt_value LOOP_TARGET "Discord text channel id" "${LOOP_TARGET:-}"
         fi
+        if [[ -z "${DISCORD_FORUM_TARGET:-}" ]]; then
+          DISCORD_FORUM_TARGET="$(detect_discord_forum_target "$CONFIG_PATH")"
+        fi
+        prompt_value DISCORD_FORUM_TARGET "Discord forum channel id for /gsd-new-epic (auto-detect best effort)" "${DISCORD_FORUM_TARGET:-}"
       else
         prompt_value LOOP_TARGET "Loop delivery target id" "${LOOP_TARGET:-}"
       fi
@@ -1037,6 +1216,10 @@ run_interactive_wizard() {
     prompt_yes_no ENABLE_LOOP_KPI "Enable weekly loop KPI report job?" "$ENABLE_LOOP_KPI"
     if [[ "$ENABLE_LOOP_KPI" -eq 1 ]]; then
       prompt_value LOOP_KPI_CRON "Weekly KPI cron expression" "$LOOP_KPI_CRON"
+    fi
+    prompt_yes_no ENABLE_GSD_BRIDGE "Enable deterministic GSD bridge job?" "$ENABLE_GSD_BRIDGE"
+    if [[ "$ENABLE_GSD_BRIDGE" -eq 1 ]]; then
+      prompt_value GSD_BRIDGE_CRON "GSD bridge cron expression" "$GSD_BRIDGE_CRON"
     fi
     prompt_yes_no ENABLE_FORUM_DAILY_COUNCIL "Enable daily forum council?" "$ENABLE_FORUM_DAILY_COUNCIL"
     if [[ "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 ]]; then
@@ -1068,6 +1251,7 @@ run_interactive_wizard() {
   loop project key: $PROJECT_KEY
   loop channel: ${LOOP_CHANNEL:-<none>}
   loop target: ${LOOP_TARGET:-<none>}
+  discord forum target: ${DISCORD_FORUM_TARGET:-<none>}
   loop lock file: ${LOOP_LOCK_FILE:-<auto>}
   allow no loop delivery: $ALLOW_NO_LOOP_DELIVERY
   loop max files: $LOOP_MAX_FILES
@@ -1075,6 +1259,8 @@ run_interactive_wizard() {
   ralphclaw subagents parallel: $RALPHCLAW_SUBAGENTS_PARALLEL
   enable loop kpi: $ENABLE_LOOP_KPI
   loop kpi cron: $LOOP_KPI_CRON
+  enable gsd bridge: $ENABLE_GSD_BRIDGE
+  gsd bridge cron: $GSD_BRIDGE_CRON
   enable forum daily council: $ENABLE_FORUM_DAILY_COUNCIL
   forum daily cron: $FORUM_DAILY_CRON
   enable forum weekly council: $ENABLE_FORUM_WEEKLY_COUNCIL
@@ -1173,6 +1359,7 @@ patch_openclaw_config() {
   jq \
     --arg plugin_path "$plugin_path" \
     --arg plugin_dir_name "$plugin_dir_name" \
+    --arg discord_forum_target "$DISCORD_FORUM_TARGET" \
     --argjson dedupe_plugin_paths "$DEDUPE_PLUGIN_PATHS" \
     --arg installed_at "$installed_at" \
     '
@@ -1196,7 +1383,11 @@ patch_openclaw_config() {
         | unique
       ) |
       .plugins.entries = (.plugins.entries // {}) |
-      .plugins.entries["gsd-command-aliases"] = ((.plugins.entries["gsd-command-aliases"] // {}) + {enabled: true}) |
+      .plugins.entries["gsd-command-aliases"] = (
+        (.plugins.entries["gsd-command-aliases"] // {})
+        + {enabled: true}
+        + (if $discord_forum_target != "" then {discordForumTarget: $discord_forum_target} else {} end)
+      ) |
       .plugins.installs = (.plugins.installs // {}) |
       .plugins.installs["gsd-command-aliases"] = {
         source: "path",
@@ -1224,9 +1415,12 @@ build_saved_install_args() {
   if [[ -n "$WORKSPACE_ROOT" ]]; then
     _out_ref+=(--workspace-root "$WORKSPACE_ROOT")
   fi
+  if [[ -n "$DISCORD_FORUM_TARGET" ]]; then
+    _out_ref+=(--discord-forum-target "$DISCORD_FORUM_TARGET")
+  fi
 
   local loops_enabled=0
-  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
     loops_enabled=1
   fi
 
@@ -1238,6 +1432,7 @@ build_saved_install_args() {
     [[ "$ENABLE_CLAWLOOP" -eq 1 ]] && _out_ref+=(--enable-autoclaw)
     [[ "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 ]] && _out_ref+=(--enable-ralphclaw-watchdog)
     [[ "$ENABLE_LOOP_KPI" -eq 1 ]] && _out_ref+=(--enable-loop-kpi)
+    [[ "$ENABLE_GSD_BRIDGE" -eq 1 ]] && _out_ref+=(--enable-gsd-bridge)
     [[ "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 ]] && _out_ref+=(--enable-forum-daily-council)
     [[ "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]] && _out_ref+=(--enable-forum-weekly-council)
     [[ "$ENABLE_RALPHCLAW_MULTI_AGENT" -eq 1 ]] && _out_ref+=(--ralphclaw-multi-agent)
@@ -1251,6 +1446,7 @@ build_saved_install_args() {
       --ralphclaw-cron "$AUTOLOOP_CRON"
       --autoclaw-cron "$CLAWLOOP_CRON"
       --loop-kpi-cron "$LOOP_KPI_CRON"
+      --gsd-bridge-cron "$GSD_BRIDGE_CRON"
       --forum-daily-cron "$FORUM_DAILY_CRON"
       --forum-weekly-cron "$FORUM_WEEKLY_CRON"
       --loop-inbox-file "$LOOP_INBOX_FILE"
@@ -1343,6 +1539,7 @@ while [[ $# -gt 0 ]]; do
     --loop-target) LOOP_TARGET="${2:-}"; LOOP_TARGET_SET=1; shift 2 ;;
     --discord-text-channel) LOOP_CHANNEL="discord"; LOOP_TARGET="${2:-}"; LOOP_TARGET_SET=1; shift 2 ;;
     --discord-forum-thread) LOOP_CHANNEL="discord"; LOOP_TARGET="${2:-}"; LOOP_TARGET_SET=1; shift 2 ;;
+    --discord-forum-target) DISCORD_FORUM_TARGET="${2:-}"; shift 2 ;;
     --loop-agent) LOOP_AGENT="${2:-}"; shift 2 ;;
     --loop-model) LOOP_MODEL="${2:-}"; shift 2 ;;
     --loop-tz) LOOP_TZ="${2:-}"; LOOP_TZ_SET=1; shift 2 ;;
@@ -1352,6 +1549,8 @@ while [[ $# -gt 0 ]]; do
     --allow-no-loop-delivery) ALLOW_NO_LOOP_DELIVERY=1; shift ;;
     --enable-loop-kpi) ENABLE_LOOP_KPI=1; shift ;;
     --loop-kpi-cron) LOOP_KPI_CRON="${2:-}"; shift 2 ;;
+    --enable-gsd-bridge) ENABLE_GSD_BRIDGE=1; shift ;;
+    --gsd-bridge-cron) GSD_BRIDGE_CRON="${2:-}"; shift 2 ;;
     --forum-daily-cron) FORUM_DAILY_CRON="${2:-}"; shift 2 ;;
     --forum-weekly-cron) FORUM_WEEKLY_CRON="${2:-}"; shift 2 ;;
     --loop-inbox-file) LOOP_INBOX_FILE="${2:-}"; LOOP_INBOX_FILE_SET=1; shift 2 ;;
@@ -1424,12 +1623,25 @@ if ! [[ "$RALPHCLAW_SUBAGENTS_PARALLEL" =~ ^[0-9]+$ ]] || [[ "$RALPHCLAW_SUBAGEN
   fail "--ralphclaw-subagents-parallel must be a positive integer"
 fi
 
+CONFIG_PATH="${CONFIG_PATH:-$OPENCLAW_DIR/openclaw.json}"
+
 validate_loop_project_scope
 resolve_loop_project_identity
 resolve_default_loop_files
-validate_loop_delivery
 
-CONFIG_PATH="${CONFIG_PATH:-$OPENCLAW_DIR/openclaw.json}"
+loops_enabled_runtime=0
+if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+  loops_enabled_runtime=1
+fi
+
+if [[ "$loops_enabled_runtime" -eq 1 && -z "${DISCORD_FORUM_TARGET:-}" && "${LOOP_CHANNEL:-}" == "discord" ]]; then
+  DISCORD_FORUM_TARGET="$(detect_discord_forum_target "$CONFIG_PATH")"
+  if [[ -n "$DISCORD_FORUM_TARGET" ]]; then
+    log "Auto-detected Discord forum target: $DISCORD_FORUM_TARGET"
+  fi
+fi
+
+validate_loop_delivery
 
 SKILL_SRC="$BUNDLE_DIR/skills/claw-gets-shit-done"
 PLUGIN_SRC="$BUNDLE_DIR/plugins/gsd-command-aliases"
@@ -1443,15 +1655,18 @@ log "Skill destination: $SKILL_DEST"
 log "Plugin source: $PLUGIN_SRC"
 log "Plugin destination: $PLUGIN_PATH"
 log "Config path: $CONFIG_PATH"
-if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
   log "Project root: $PROJECT_ROOT"
   log "Project key: $PROJECT_KEY"
   log "Loop inbox: $LOOP_INBOX_FILE"
   log "Loop queue: $LOOP_QUEUE_FILE"
   log "Loop KPI file: $LOOP_KPI_FILE"
+  log "Discord forum target (plugin): ${DISCORD_FORUM_TARGET:-<none>}"
   log "Loop lock file: $LOOP_LOCK_FILE"
   log "RalphClaw multi-agent: $ENABLE_RALPHCLAW_MULTI_AGENT"
   log "RalphClaw subagents parallel: $RALPHCLAW_SUBAGENTS_PARALLEL"
+  log "GSD bridge enabled: $ENABLE_GSD_BRIDGE"
+  log "GSD bridge cron: $GSD_BRIDGE_CRON"
 fi
 
 install_tree "$SKILL_SRC" "$SKILL_DEST"
@@ -1467,7 +1682,7 @@ if [[ "$RESTART_GATEWAY" -eq 1 ]]; then
   fi
 fi
 
-if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
   log "Ensuring loop handoff files"
   ensure_loop_handoff_files
   log "Configuring autonomous loop workers"
@@ -1495,6 +1710,7 @@ Loop mode (optional):
   --enable-ralphclaw (default: $AUTOLOOP_CRON)
   --enable-autoclaw (default: $CLAWLOOP_CRON)
   --enable-loop-kpi (default: $LOOP_KPI_CRON)
+  --enable-gsd-bridge (default cron: $GSD_BRIDGE_CRON)
   --enable-forum-daily-council (default cron: $FORUM_DAILY_CRON)
   --enable-forum-weekly-council (default cron: $FORUM_WEEKLY_CRON)
   --project-root <path> (required when loop workers are enabled)
@@ -1506,5 +1722,6 @@ Loop mode (optional):
   --ralphclaw-subagents-parallel <n>
   --loop-channel/--loop-target for announcements
   --discord-text-channel <id> or --discord-forum-thread <id> as shortcuts
+  --discord-forum-target <id> for /gsd-new-epic thread creation
   --allow-no-loop-delivery (if you intentionally run silently)
 NEXT

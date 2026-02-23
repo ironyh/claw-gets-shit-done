@@ -4,6 +4,7 @@ Hyphen-style aliases for GSD commands:
 
 - `/gsd-add-todo`
 - `/gsd-check-todos`
+- `/gsd-new-epic`
 - `/gsd-progress`
 - `/gsd-discuss-phase`
 - `/gsd-plan-phase`
@@ -30,3 +31,16 @@ Workspace candidates include command context (`ctx.cwd`/`ctx.workingDirectory`),
 
 - `workspaceDir`: explicit workspace root
 - `gsdToolsPath`: explicit gsd-tools binary path
+- `loopInboxFile`: override LOOP inbox path
+- `loopQueueFile`: override LOOP queue path
+- `defaultEpicId`: default epic id for todo intake sync
+- `defaultEpicTitle`: default epic title for todo intake sync
+- `autoQueueTodo`: `true|false` (default `true`) to sync `/gsd-add-todo` directly into LOOP files
+- `autoThreadOnNewEpic`: `true|false` (default `true`) for `/gsd-new-epic` forum thread creation attempt
+- `discordForumTarget`: Discord forum channel target used by `/gsd-new-epic`
+- `discordAccountId`: optional channel account id for thread create command
+
+## Deterministic behavior
+
+- `/gsd-add-todo` writes `.planning/todos/pending/*.md` and (by default) enqueues one loop intake item immediately.
+- `/gsd-new-epic` creates an epic intake in LOOP files and attempts Discord forum thread creation when configured.
