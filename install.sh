@@ -16,6 +16,7 @@ ENABLE_LOOP_KPI=0
 ALLOW_NO_LOOP_DELIVERY=0
 DEDUPE_CRON_JOBS=1
 DEDUPE_PLUGIN_PATHS=1
+LEGACY_LOOP_CLEANUP=0
 OPENCLAW_DIR="${OPENCLAW_DIR:-$HOME/.openclaw}"
 WORKSPACE_ROOT=""
 SKILL_DIR=""
@@ -100,6 +101,7 @@ Options:
   --loop-lock-file <path>            Shared lock file to prevent overlapping loop runs
   --no-dedupe-crons                  Do not remove duplicate cron jobs with same name
   --no-dedupe-plugin-paths           Do not prune duplicate plugin paths for same plugin id
+  --cleanup-legacy-loop-jobs         Remove old unscoped loop cron jobs (destructive)
   --ralphclaw-cron <expr>            Cron expression for RalphClaw (default: */15 * * * *)
   --autoloop-cron <expr>             Backward-compatible alias for --ralphclaw-cron
   --autoclaw-cron <expr>             Cron expression for AutoClaw (default: 0 */3 * * *)
@@ -756,6 +758,7 @@ EOF
 
 cleanup_legacy_loop_job_names() {
   [[ "$DRY_RUN" -eq 0 ]] || return 0
+  [[ "$LEGACY_LOOP_CLEANUP" -eq 1 ]] || return 0
   local legacy_name legacy_id
   local -a legacy_names=(
     "Kai RalphClaw (15m)"
@@ -999,15 +1002,15 @@ backup_path() {
 
 run_or_echo() {
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    printf '[dry-run] %s\n' "$*"
+    print_cmd "$@"
   else
-    eval "$@"
+    "$@"
   fi
 }
 
 ensure_parent() {
   local p="$1"
-  run_or_echo "mkdir -p \"$(dirname "$p")\""
+  run_or_echo mkdir -p "$(dirname "$p")"
 }
 
 install_tree() {
@@ -1022,7 +1025,7 @@ install_tree() {
       local backup
       backup="$(backup_path "$dest")"
       log "Backing up existing path: $dest -> $backup"
-      run_or_echo "mv \"$dest\" \"$backup\""
+      run_or_echo mv "$dest" "$backup"
     else
       fail "Destination exists: $dest (use --force to replace)"
     fi
@@ -1030,13 +1033,13 @@ install_tree() {
 
   if [[ "$MODE" == "symlink" ]]; then
     log "Symlink install: $dest -> $src"
-    run_or_echo "ln -s \"$src\" \"$dest\""
+    run_or_echo ln -s "$src" "$dest"
     return 0
   fi
 
   log "Copy install: $src -> $dest"
-  run_or_echo "mkdir -p \"$dest\""
-  run_or_echo "rsync -a --delete \"$src/\" \"$dest/\""
+  run_or_echo mkdir -p "$dest"
+  run_or_echo rsync -a --delete "$src/" "$dest/"
 }
 
 patch_openclaw_config() {
@@ -1060,7 +1063,7 @@ patch_openclaw_config() {
   tmp="${cfg}.tmp"
 
   log "Backing up config: $cfg -> $backup"
-  run_or_echo "cp \"$cfg\" \"$backup\""
+  run_or_echo cp "$cfg" "$backup"
 
   local installed_at
   installed_at="$(date -Iseconds)"
@@ -1149,6 +1152,7 @@ while [[ $# -gt 0 ]]; do
     --loop-lock-file) LOOP_LOCK_FILE="${2:-}"; shift 2 ;;
     --no-dedupe-crons) DEDUPE_CRON_JOBS=0; shift ;;
     --no-dedupe-plugin-paths) DEDUPE_PLUGIN_PATHS=0; shift ;;
+    --cleanup-legacy-loop-jobs) LEGACY_LOOP_CLEANUP=1; shift ;;
     --ralphclaw-cron) AUTOLOOP_CRON="${2:-}"; shift 2 ;;
     --autoloop-cron) AUTOLOOP_CRON="${2:-}"; shift 2 ;;
     --autoclaw-cron) CLAWLOOP_CRON="${2:-}"; shift 2 ;;
@@ -1252,7 +1256,7 @@ patch_openclaw_config "$CONFIG_PATH" "$PLUGIN_PATH"
 if [[ "$RESTART_GATEWAY" -eq 1 ]]; then
   if command -v openclaw >/dev/null 2>&1; then
     log "Restarting OpenClaw gateway"
-    run_or_echo "openclaw gateway restart"
+    run_or_echo openclaw gateway restart
   else
     warn "openclaw CLI not found; restart gateway manually"
   fi

@@ -48,9 +48,14 @@ SKILL_PATH="$SKILL_DIR/claw-gets-shit-done"
 
 run_or_echo() {
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    printf '[dry-run] %s\n' "$*"
+    printf '[dry-run]'
+    while [[ $# -gt 0 ]]; do
+      printf ' %q' "$1"
+      shift
+    done
+    printf '\n'
   else
-    eval "$@"
+    "$@"
   fi
 }
 
@@ -60,7 +65,7 @@ backup_move() {
     local backup
     backup="${target}.removed.$(date +%Y%m%d-%H%M%S)"
     echo "[uninstall] moving $target -> $backup"
-    run_or_echo "mv \"$target\" \"$backup\""
+    run_or_echo mv "$target" "$backup"
   else
     echo "[uninstall] skip missing: $target"
   fi

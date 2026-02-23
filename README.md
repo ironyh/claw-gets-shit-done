@@ -278,6 +278,7 @@ Multi-project setup:
 - Run installer once per project with different `--project-root`.
 - Use distinct Discord targets per project.
 - Optional: set explicit `--project-key` per project for stable cron naming.
+- Optional one-time cleanup of old unscoped jobs: `--cleanup-legacy-loop-jobs` (destructive).
 
 Discord delivery shortcuts:
 - Text channel: `--discord-text-channel <channel_id>`
