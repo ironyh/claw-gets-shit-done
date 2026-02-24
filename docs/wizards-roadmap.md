@@ -22,7 +22,7 @@ Current value:
 - project bootstrap mode selection
 - loop + delivery baseline prompts
 
-## 2) Discord Wiring Wizard (recommended next)
+## 2) Discord Wiring Wizard (implemented)
 
 Questions:
 - delivery channel/thread id
@@ -62,7 +62,8 @@ Phase 1:
 - add docs + preset command bundles (done)
 
 Phase 2:
-- add Discord Wiring Wizard and Loop Tuning Wizard
+- keep Discord Wiring Wizard in interactive installer
+- add Loop Tuning Wizard presets/profiles
 
 Phase 3:
 - optional project bootstrap helper wizard if support load justifies it

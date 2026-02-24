@@ -13,6 +13,12 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ironyh/claw-gets-shit-done/m
 ./doctor.sh
 ```
 
+## Interactive Wizards
+
+`./install.sh --interactive` now includes:
+- bootstrap wizard (existing/brownfield/empty/greenfield)
+- Discord wiring wizard (delivery target, forum target, slash authorization mode)
+
 ## Full Loop Setup Example
 
 ```bash

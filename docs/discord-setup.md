@@ -2,6 +2,14 @@
 
 This page covers channel targeting, forum targets, and slash authorization.
 
+Interactive path:
+
+```bash
+./install.sh --interactive
+```
+
+Then use the Discord Wiring Wizard step.
+
 ## Required Inputs
 
 - delivery target: `--loop-target <id>`

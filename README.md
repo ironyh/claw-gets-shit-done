@@ -64,6 +64,7 @@ Behavior:
 - If flags are passed, it runs non-interactive with those flags.
 - It only asks for missing required inputs (for example project root for loops, delivery target, or desired sub-agent parallelism).
 - In guided mode, installer detects project state (`existing`, `brownfield`, `empty`, `greenfield`) and asks for bootstrap strategy when relevant.
+- In guided mode, installer includes a Discord Wiring Wizard (delivery target, forum target, slash auth mode).
 
 Non-interactive example:
 

@@ -470,6 +470,109 @@ prompt_path_choice() {
   printf -v "$var_name" '%s' "$selected"
 }
 
+run_discord_wiring_wizard() {
+  local mode="${1:-optional}"
+  local configure=1
+
+  if [[ "$mode" == "optional" ]]; then
+    prompt_yes_no configure "Run Discord wiring wizard (delivery + forum + slash auth)?" 0
+    [[ "$configure" -eq 1 ]] || return 0
+  fi
+
+  printf '\nDiscord Wiring Wizard\n'
+
+  local delivery_mode="text-channel"
+  if [[ -z "${LOOP_CHANNEL:-}" ]]; then
+    delivery_mode="silent"
+  elif [[ "${LOOP_CHANNEL:-}" == "discord" && "${LOOP_TARGET:-}" == thread:* ]]; then
+    delivery_mode="forum-thread"
+  fi
+
+  prompt_choice delivery_mode \
+    "Discord delivery mode" \
+    "$delivery_mode" \
+    "text-channel" \
+    "forum-thread" \
+    "silent"
+
+  case "$delivery_mode" in
+    text-channel)
+      LOOP_CHANNEL="discord"
+      prompt_value LOOP_TARGET "Discord text channel id" "${LOOP_TARGET:-}"
+      if [[ -z "$LOOP_TARGET" ]]; then
+        prompt_yes_no ALLOW_NO_LOOP_DELIVERY "No delivery target set. Continue without announcements?" 0
+        if [[ "$ALLOW_NO_LOOP_DELIVERY" -eq 1 ]]; then
+          LOOP_CHANNEL=""
+        fi
+      fi
+      ;;
+    forum-thread)
+      LOOP_CHANNEL="discord"
+      prompt_value LOOP_TARGET "Discord forum thread id" "${LOOP_TARGET:-}"
+      if [[ -z "$LOOP_TARGET" ]]; then
+        prompt_yes_no ALLOW_NO_LOOP_DELIVERY "No delivery target set. Continue without announcements?" 0
+        if [[ "$ALLOW_NO_LOOP_DELIVERY" -eq 1 ]]; then
+          LOOP_CHANNEL=""
+        fi
+      fi
+      ;;
+    silent)
+      LOOP_CHANNEL=""
+      LOOP_TARGET=""
+      ALLOW_NO_LOOP_DELIVERY=1
+      ;;
+    *)
+      fail "Invalid Discord delivery mode: $delivery_mode"
+      ;;
+  esac
+
+  if [[ -z "${DISCORD_FORUM_TARGET:-}" ]]; then
+    DISCORD_FORUM_TARGET="$(detect_discord_forum_target "$CONFIG_PATH")"
+  fi
+  prompt_value DISCORD_FORUM_TARGET "Discord forum channel id for /gsd-new-epic (blank to skip)" "${DISCORD_FORUM_TARGET:-}"
+  if [[ "${DISCORD_FORUM_TARGET,,}" == "none" ]]; then
+    DISCORD_FORUM_TARGET=""
+  fi
+
+  local slash_mode="wildcard"
+  case "${DISCORD_SLASH_ALLOW_FROM:-*}" in
+    "*") slash_mode="wildcard" ;;
+    ""|none|NONE) slash_mode="none" ;;
+    *) slash_mode="explicit-user-id" ;;
+  esac
+
+  prompt_choice slash_mode \
+    "Discord slash-command sender authorization" \
+    "$slash_mode" \
+    "wildcard" \
+    "explicit-user-id" \
+    "none"
+
+  case "$slash_mode" in
+    wildcard)
+      DISCORD_SLASH_ALLOW_FROM="*"
+      ;;
+    explicit-user-id)
+      local explicit_sender_id="${DISCORD_SLASH_ALLOW_FROM:-}"
+      if [[ "$explicit_sender_id" == "*" || "${explicit_sender_id,,}" == "none" ]]; then
+        explicit_sender_id=""
+      fi
+      prompt_value explicit_sender_id "Discord user id allowed for slash commands" "${explicit_sender_id:-}"
+      DISCORD_SLASH_ALLOW_FROM="$explicit_sender_id"
+      ;;
+    none)
+      DISCORD_SLASH_ALLOW_FROM="none"
+      ;;
+    *)
+      fail "Invalid slash authorization mode: $slash_mode"
+      ;;
+  esac
+
+  if [[ -z "$DISCORD_SLASH_ALLOW_FROM" ]]; then
+    DISCORD_SLASH_ALLOW_FROM="none"
+  fi
+}
+
 detect_local_tz() {
   local tz=""
   if command -v timedatectl >/dev/null 2>&1; then
@@ -1348,30 +1451,7 @@ run_interactive_wizard() {
         prompt_value RALPHCLAW_SUBAGENTS_PARALLEL "Max concurrent RalphClaw sub-agents" "$RALPHCLAW_SUBAGENTS_PARALLEL"
       fi
     fi
-    prompt_value LOOP_CHANNEL "Loop delivery channel (blank for no announcements)" "$LOOP_CHANNEL"
-    if [[ -n "$LOOP_CHANNEL" ]]; then
-      if [[ "$LOOP_CHANNEL" == "discord" ]]; then
-        local discord_target_mode="text-channel"
-        prompt_choice discord_target_mode "Discord target type" "$discord_target_mode" "text-channel" "forum-thread"
-        if [[ "$discord_target_mode" == "forum-thread" ]]; then
-          prompt_value LOOP_TARGET "Discord forum thread id" "${LOOP_TARGET:-}"
-        else
-          prompt_value LOOP_TARGET "Discord text channel id" "${LOOP_TARGET:-}"
-        fi
-        if [[ -z "${DISCORD_FORUM_TARGET:-}" ]]; then
-          DISCORD_FORUM_TARGET="$(detect_discord_forum_target "$CONFIG_PATH")"
-        fi
-        prompt_value DISCORD_FORUM_TARGET "Discord forum channel id for /gsd-new-epic (auto-detect best effort)" "${DISCORD_FORUM_TARGET:-}"
-        prompt_value DISCORD_SLASH_ALLOW_FROM "Discord slash-command allowFrom entry (*, user-id, or none)" "${DISCORD_SLASH_ALLOW_FROM:-*}"
-      else
-        prompt_value LOOP_TARGET "Loop delivery target id" "${LOOP_TARGET:-}"
-      fi
-      if [[ -z "$LOOP_TARGET" ]]; then
-        prompt_yes_no ALLOW_NO_LOOP_DELIVERY "No delivery target set. Continue without announcements?" 0
-      fi
-    else
-      ALLOW_NO_LOOP_DELIVERY=1
-    fi
+    run_discord_wiring_wizard required
     if [[ "$ENABLE_AUTOLOOP" -eq 1 ]]; then
       prompt_value AUTOLOOP_CRON "RalphClaw schedule (cron expr)" "$AUTOLOOP_CRON"
       prompt_yes_no ENABLE_AUTOLOOP_WATCHDOG "Enable RalphClaw watchdog?" 1
@@ -1395,6 +1475,8 @@ run_interactive_wizard() {
     if [[ "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
       prompt_value FORUM_WEEKLY_CRON "Weekly forum council cron expression" "$FORUM_WEEKLY_CRON"
     fi
+  else
+    run_discord_wiring_wizard optional
   fi
 
   local gsd_tools_hint="$BUNDLE_DIR/skills/claw-gets-shit-done/bin/gsd-tools"
