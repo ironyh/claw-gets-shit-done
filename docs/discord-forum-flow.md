@@ -3,6 +3,7 @@
 ## Default Model
 
 - One forum thread is treated as one epic.
+- New tasks within that epic should reuse the same `epic_thread`.
 - Daily council triages thread input and decides:
   - `promote_to_queue`
   - `need_more_data`
@@ -42,6 +43,8 @@ Use this mapping when you want forum/council work to follow the same structure a
 - Epic id default: `EPIC-<thread_id>`
 - Queue items are tasks under that epic, not whole epics.
 - Queue tasks must keep acceptance criteria and owner.
+- `/gsd-new-epic` reuses current thread when run inside a forum thread.
+- `/gsd-add-todo` in a forum thread inherits epic mapping from that thread.
 
 ## Decision Tracking Contract
 

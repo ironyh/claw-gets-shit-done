@@ -45,3 +45,13 @@ Yes. Use distinct `--project-root` and `--project-key` per project to avoid cron
 ## Do councils replace GSD commands?
 
 No. Councils are discussion/risk review. Execution stays in GSD + queue flow.
+
+## Why did each task get its own Discord thread?
+
+Thread behavior now follows epic-first mapping:
+
+- one forum thread = one epic
+- `/gsd-new-epic` inside a thread reuses that thread (no new thread)
+- `/gsd-add-todo` inside a thread inherits that thread as `epic_thread`
+
+If you still see thread spray, check which automation is creating threads (for example non-CGSD autoloops) and align it to reuse `epic_thread`.

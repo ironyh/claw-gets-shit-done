@@ -54,3 +54,5 @@ If Discord replies with `⚠️ This command requires authorization.`, ensure se
 
 - `/gsd-add-todo` writes `.planning/todos/pending/*.md` and (by default) enqueues one loop intake item immediately.
 - `/gsd-new-epic` creates an epic intake in LOOP files and attempts Discord forum thread creation when configured.
+- If `/gsd-new-epic` is run inside a Discord forum thread, it reuses that thread (no new thread created).
+- If `/gsd-add-todo` is run inside a Discord forum thread, queue items inherit that thread as `epic_thread`.

@@ -36,7 +36,10 @@ The `gsd-command-aliases` plugin adds slash-friendly snake/hyphen aliases:
 2. If `autoQueueTodo=true` (default), syncs one idempotent item to:
    - `LOOP-INBOX.md`
    - `LOOP-QUEUE.md`
-3. Queue item starts with:
+3. If command is run inside a Discord forum thread, todo sync inherits that thread as epic context:
+   - `epic_thread` = current thread id
+   - `epic_id` = existing epic mapped to that thread (or `EPIC-<thread_id>` if none exists yet)
+4. Queue item starts with:
    - `status: ready`
    - `verify_status: pending`
    - `priority: P1`
@@ -44,8 +47,9 @@ The `gsd-command-aliases` plugin adds slash-friendly snake/hyphen aliases:
 ### `/gsd-new-epic`
 
 1. Creates epic intake metadata in loop docs.
-2. If forum integration is configured, can auto-create a Discord forum thread.
-3. Epic id defaults to `EPIC-<thread_or_generated_id>`.
+2. If command is run inside an existing Discord forum thread, that thread is reused (no new thread created).
+3. If run outside a thread and forum integration is configured, it can auto-create a new Discord forum thread.
+4. Epic id defaults to `EPIC-<thread_or_generated_id>`.
 
 ### Brownfield Startup
 

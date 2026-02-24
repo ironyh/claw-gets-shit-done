@@ -340,6 +340,58 @@ function queueItemExists(filePath, id) {
   return content.includes(`- id: ${id}`);
 }
 
+function parseBlockField(block, fieldName) {
+  const re = new RegExp(`^\\s*${fieldName}:\\s*(.+)$`, "m");
+  const match = block.match(re);
+  if (!match || !match[1]) return "";
+  return match[1].trim();
+}
+
+function findEpicBindingByThread(filePath, threadRef) {
+  if (!threadRef || !fs.existsSync(filePath)) return null;
+  const content = fs.readFileSync(filePath, "utf8");
+  const blocks = content.split(/\n(?=- id:\s)/g);
+  for (const block of blocks) {
+    const epicThread = parseBlockField(block, "epic_thread");
+    if (epicThread !== threadRef) continue;
+    const epicId = parseBlockField(block, "epic_id");
+    if (!epicId) continue;
+    const epicTitle = parseBlockField(block, "epic_title") || epicId;
+    return { epicId, epicTitle, epicThread };
+  }
+  return null;
+}
+
+function resolveCurrentThreadRef(ctx) {
+  if (!ctx || ctx.channel !== "discord") return "";
+  const raw = ctx.messageThreadId;
+  if (raw === undefined || raw === null) return "";
+  const threadRef = String(raw).trim();
+  return threadRef || "";
+}
+
+function resolveEpicContext(loopConfig, ctx) {
+  const threadRef = resolveCurrentThreadRef(ctx);
+  if (!threadRef) {
+    return {
+      epicId: loopConfig.epicId,
+      epicTitle: loopConfig.epicTitle,
+      epicThread: "n/a",
+    };
+  }
+
+  const existing =
+    findEpicBindingByThread(loopConfig.queueFile, threadRef) ||
+    findEpicBindingByThread(loopConfig.inboxFile, threadRef);
+  if (existing) return existing;
+
+  return {
+    epicId: `EPIC-${threadRef}`,
+    epicTitle: `Discord thread ${threadRef}`,
+    epicThread: threadRef,
+  };
+}
+
 function appendInboxItem(inboxFile, item) {
   const lines = [
     "",
@@ -405,9 +457,10 @@ async function getProgressMeta(api, workspaceDir) {
   }
 }
 
-async function syncTodoToLoop(api, workspaceDir, todo) {
+async function syncTodoToLoop(api, workspaceDir, todo, ctx) {
   const loop = resolveLoopConfig(api, workspaceDir);
   ensureLoopFiles(loop.inboxFile, loop.queueFile);
+  const epic = resolveEpicContext(loop, ctx);
 
   const id = `GSD-TODO-${safeSlugUpper(todo.filename ?? todo.path ?? todo.title)}`;
   if (queueItemExists(loop.inboxFile, id) || queueItemExists(loop.queueFile, id)) {
@@ -421,8 +474,9 @@ async function syncTodoToLoop(api, workspaceDir, todo) {
   appendInboxItem(loop.inboxFile, {
     id,
     title: todo.title,
-    epicId: loop.epicId,
-    epicTitle: loop.epicTitle,
+    epicId: epic.epicId,
+    epicTitle: epic.epicTitle,
+    epicThread: epic.epicThread,
     gsdAction,
     gsdPhase,
     nextStep: `sync from ${todo.path}`,
@@ -433,7 +487,8 @@ async function syncTodoToLoop(api, workspaceDir, todo) {
     id,
     title: todo.title,
     sourcePath: todo.path,
-    epicId: loop.epicId,
+    epicId: epic.epicId,
+    epicThread: epic.epicThread,
     gsdAction,
     gsdPhase,
   });
@@ -443,6 +498,8 @@ async function syncTodoToLoop(api, workspaceDir, todo) {
     id,
     inboxFile: toPosixRel(workspaceDir, loop.inboxFile),
     queueFile: toPosixRel(workspaceDir, loop.queueFile),
+    epicId: epic.epicId,
+    epicThread: epic.epicThread,
   };
 }
 
@@ -567,9 +624,12 @@ async function handleAddTodo(api, ctx) {
         path: relativePath,
         title,
         area,
-      });
+      }, ctx);
       if (syncResult.synced) {
-        loopLine = `Loop sync: queued (${syncResult.id})`;
+        const epicMeta = syncResult.epicThread && syncResult.epicThread !== "n/a"
+          ? `${syncResult.epicId} @thread ${syncResult.epicThread}`
+          : syncResult.epicId;
+        loopLine = `Loop sync: queued (${syncResult.id}, ${epicMeta})`;
       } else {
         loopLine = `Loop sync: skipped (${syncResult.reason})`;
       }
@@ -605,8 +665,13 @@ async function handleNewEpic(api, ctx) {
   const loop = resolveLoopConfig(api, workspaceDir);
   ensureLoopFiles(loop.inboxFile, loop.queueFile);
 
-  const epicTitle = args[0].toUpperCase() + args.slice(1);
-  const epicId = `EPIC-${safeSlugUpper(epicTitle)}`;
+  let epicTitle = args[0].toUpperCase() + args.slice(1);
+  const threadRef = resolveCurrentThreadRef(ctx);
+  const existingFromThread = threadRef
+    ? findEpicBindingByThread(loop.queueFile, threadRef) || findEpicBindingByThread(loop.inboxFile, threadRef)
+    : null;
+  const epicId = existingFromThread?.epicId || `EPIC-${safeSlugUpper(epicTitle)}`;
+  if (existingFromThread?.epicTitle) epicTitle = existingFromThread.epicTitle;
   const intakeId = `${epicId}-INTAKE`;
 
   if (queueItemExists(loop.inboxFile, intakeId) || queueItemExists(loop.queueFile, intakeId)) {
@@ -620,7 +685,10 @@ async function handleNewEpic(api, ctx) {
 
   let epicThread = "n/a";
   let threadLine = "Forum thread: skipped";
-  if (loop.autoThreadOnNewEpic) {
+  if (threadRef) {
+    epicThread = threadRef;
+    threadLine = `Forum thread: reused current thread (${epicThread})`;
+  } else if (loop.autoThreadOnNewEpic) {
     const thread = await createDiscordEpicThread(api, loop, epicTitle, epicId);
     if (thread.created) {
       epicThread = thread.threadId || loop.discordForumTarget || "discord";

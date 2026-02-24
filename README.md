@@ -251,7 +251,9 @@ Role ping guardrails (in council prompts):
 
 Todo intake behavior:
 - `/gsd-add-todo` writes the todo in `.planning/todos/pending` and (default) syncs one loop intake item immediately.
+- If `/gsd-add-todo` is run inside a Discord forum thread, it reuses that thread as `epic_thread`.
 - `/gsd-new-epic` creates epic intake in loop files and can create a Discord forum thread when configured.
+- If `/gsd-new-epic` is run inside an existing forum thread, it reuses the current thread instead of creating a new one.
 
 ## Install Profiles
 
