@@ -67,6 +67,10 @@ Manual run:
 ./scripts/gsd-loop-bridge.sh --project-root /path/to/project
 ```
 
+Concurrency note:
+- Bridge now uses a non-blocking shared lock (`.openclaw/locks/loop-worker.lock` by default).
+- If lock is busy (RalphClaw/AutoClaw already writing), bridge skips that cycle instead of colliding on LOOP files.
+
 Install-time cron:
 
 ```bash

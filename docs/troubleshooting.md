@@ -81,6 +81,12 @@ And confirm queue items are actionable:
 - `status: ready`
 - `verify_status: pending|failed`
 
+Also check for concurrent writers:
+- legacy autoloops + CGSD loops running together
+- bridge jobs writing LOOP files at the same cadence as loop workers
+
+Prefer one active loop stack per project and shared lock usage.
+
 ## 7) No Discord Announcements
 
 Most common:

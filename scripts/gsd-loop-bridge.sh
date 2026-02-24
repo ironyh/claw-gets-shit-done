@@ -9,6 +9,7 @@ EPIC_TITLE="GSD Backlog"
 EPIC_THREAD=""
 MAX_ITEMS=25
 GSD_TOOLS_BIN="${GSD_TOOLS_PATH:-}"
+LOCK_FILE=""
 
 usage() {
   cat <<USAGE
@@ -23,6 +24,7 @@ Options:
   --epic-id <id>          Epic id for bridged items (default: EPIC-GSD-BACKLOG)
   --epic-title <title>    Epic title for bridged items (default: GSD Backlog)
   --epic-thread <ref>     Optional thread link/id for epic provenance
+  --lock-file <path>      Optional shared lock file path (default: <project>/.openclaw/locks/loop-worker.lock)
   --max-items <n>         Max todos to sync per run (default: 25)
   --gsd-tools <path>      Explicit gsd-tools binary path
   -h, --help              Show help
@@ -37,6 +39,7 @@ while [[ $# -gt 0 ]]; do
     --epic-id) EPIC_ID="${2:-}"; shift 2 ;;
     --epic-title) EPIC_TITLE="${2:-}"; shift 2 ;;
     --epic-thread) EPIC_THREAD="${2:-}"; shift 2 ;;
+    --lock-file) LOCK_FILE="${2:-}"; shift 2 ;;
     --max-items) MAX_ITEMS="${2:-}"; shift 2 ;;
     --gsd-tools) GSD_TOOLS_BIN="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -61,6 +64,20 @@ if [[ -z "$INBOX_FILE" ]]; then
 fi
 if [[ -z "$QUEUE_FILE" ]]; then
   QUEUE_FILE="$PROJECT_ROOT/.openclaw/LOOP-QUEUE.md"
+fi
+if [[ -z "$LOCK_FILE" ]]; then
+  LOCK_FILE="$PROJECT_ROOT/.openclaw/locks/loop-worker.lock"
+fi
+
+if command -v flock >/dev/null 2>&1; then
+  mkdir -p "$(dirname "$LOCK_FILE")"
+  exec 9>"$LOCK_FILE"
+  if ! flock -n 9; then
+    echo "[gsd-bridge] lock busy, skipping run: $LOCK_FILE"
+    exit 0
+  fi
+else
+  echo "[gsd-bridge][warn] flock not found; continuing without lock protection" >&2
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
