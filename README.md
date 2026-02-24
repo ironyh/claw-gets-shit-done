@@ -10,6 +10,17 @@ Packaged GSD workflow for OpenClaw with:
 
 This bundle is built to handle different OpenClaw setups (home dirs, workspace installs, custom paths).
 
+## Quick Links
+
+- Install CGSD: [`docs/install-update.md`](docs/install-update.md)
+- Update CGSD: [`docs/install-update.md#update`](docs/install-update.md#update)
+- Discord settings (channels, forum target, slash allowFrom): [`docs/configuration.md#delivery`](docs/configuration.md#delivery)
+- Discord forum flow (epics/discuss/council): [`docs/discord-forum-flow.md`](docs/discord-forum-flow.md)
+- Commands and aliases (`/gsd:*`, `/gsd-*`): [`docs/command-reference.md`](docs/command-reference.md)
+- Operations and troubleshooting: [`docs/operations.md`](docs/operations.md)
+- Full documentation index: [`docs/index.md`](docs/index.md)
+- Online docs: `https://ironyh.github.io/claw-gets-shit-done/`
+
 ## Documentation
 
 - Online docs: `https://ironyh.github.io/claw-gets-shit-done/`
