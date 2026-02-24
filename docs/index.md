@@ -17,8 +17,10 @@ Claw Gets Shit Done (CGSD) is an OpenClaw bundle that combines:
 ## What This Site Covers
 
 - full install and update lifecycle
+- happy-path setups for common project types
 - build and release process
 - installer/runtime configuration
+- loop, GSD, and persona-flow tuning
 - command and alias reference
 - system architecture and data flow
 - Discord forum discussion flow (daily + weekly councils)
@@ -28,13 +30,19 @@ Claw Gets Shit Done (CGSD) is an OpenClaw bundle that combines:
 ## Quick Links
 
 - Install and update: [Install & Update](install-update.md)
+- Happy-path examples: [Happy Paths](happy-paths.md)
+- Discord setup: [Discord Setup](discord-setup.md)
 - Build process: [Build & Release](build-release.md)
 - Flags and defaults: [Configuration](configuration.md)
+- Loop tuning: [Loop Settings](loop-settings.md)
+- GSD tuning: [GSD Settings](gsd-settings.md)
+- Role strategy: [Persona & Flow Settings](persona-flows.md)
 - Command map: [Command Reference](command-reference.md)
 - System model: [Architecture](architecture.md)
 - Forum governance: [Discord Forum Flow](discord-forum-flow.md)
 - Improvement ideas: [Proposals](proposals.md)
 - Runtime troubleshooting: [Operations](operations.md)
+- Issue matrix: [Troubleshooting](troubleshooting.md)
 - Common issues: [FAQ](faq.md)
 - Published docs: <https://ironyh.github.io/claw-gets-shit-done/>
 
