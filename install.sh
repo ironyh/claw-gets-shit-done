@@ -1470,6 +1470,31 @@ run_or_echo() {
   fi
 }
 
+restart_gateway_best_effort() {
+  if ! command -v openclaw >/dev/null 2>&1; then
+    warn "openclaw CLI not found; restart gateway manually"
+    return 0
+  fi
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    print_cmd openclaw gateway restart
+    return 0
+  fi
+
+  log "Restarting OpenClaw gateway"
+  if openclaw gateway restart; then
+    return 0
+  fi
+
+  warn "Gateway restart returned non-zero status. Probing gateway health before failing."
+  if openclaw gateway health >/dev/null 2>&1; then
+    warn "Gateway health is OK despite restart timeout/error; continuing install."
+    return 0
+  fi
+
+  fail "Gateway restart failed and health probe is not OK. Run: openclaw gateway status --deep"
+}
+
 ensure_parent() {
   local p="$1"
   run_or_echo mkdir -p "$(dirname "$p")"
@@ -1941,12 +1966,7 @@ write_plugin_local_config "$PLUGIN_PATH"
 patch_openclaw_config "$CONFIG_PATH" "$PLUGIN_PATH"
 
 if [[ "$RESTART_GATEWAY" -eq 1 ]]; then
-  if command -v openclaw >/dev/null 2>&1; then
-    log "Restarting OpenClaw gateway"
-    run_or_echo openclaw gateway restart
-  else
-    warn "openclaw CLI not found; restart gateway manually"
-  fi
+  restart_gateway_best_effort
 fi
 
 if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
