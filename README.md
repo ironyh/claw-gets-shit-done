@@ -12,21 +12,10 @@ This bundle is built to handle different OpenClaw setups (home dirs, workspace i
 
 ## Quick Links
 
-- Install CGSD: [`docs/install-update.md`](docs/install-update.md)
-- Update CGSD: [`docs/install-update.md#update`](docs/install-update.md#update)
-- Happy-path examples: [`docs/happy-paths.md`](docs/happy-paths.md)
-- Discord settings (channels, forum target, slash allowFrom): [`docs/configuration.md#delivery`](docs/configuration.md#delivery)
-- Discord setup guide: [`docs/discord-setup.md`](docs/discord-setup.md)
-- Discord forum flow (epics/discuss/council): [`docs/discord-forum-flow.md`](docs/discord-forum-flow.md)
-- Loop tuning: [`docs/loop-settings.md`](docs/loop-settings.md)
-- GSD tuning: [`docs/gsd-settings.md`](docs/gsd-settings.md)
-- Persona/flow tuning: [`docs/persona-flows.md`](docs/persona-flows.md)
-- Commands and aliases (`/gsd:*`, `/gsd-*`): [`docs/command-reference.md`](docs/command-reference.md)
-- Operations and troubleshooting: [`docs/operations.md`](docs/operations.md)
-- Troubleshooting matrix: [`docs/troubleshooting.md`](docs/troubleshooting.md)
-- Wizard roadmap: [`docs/wizards-roadmap.md`](docs/wizards-roadmap.md)
-- Full documentation index: [`docs/index.md`](docs/index.md)
-- Online docs: `https://ironyh.github.io/claw-gets-shit-done/`
+- Install + Update: https://ironyh.github.io/claw-gets-shit-done/install-update/
+- Discord Wiring + Forum Flow: https://ironyh.github.io/claw-gets-shit-done/discord-setup/
+- GSD Commands + Aliases: https://ironyh.github.io/claw-gets-shit-done/command-reference/
+- Troubleshooting: https://ironyh.github.io/claw-gets-shit-done/troubleshooting/
 
 ## Documentation
 
