@@ -103,6 +103,16 @@ else
   check_warn "openclaw CLI not found in PATH"
 fi
 
+# Check VidClaw dashboard if installed
+VIDCLAW_DIR="${OPENCLAW_DIR}/workspace/dashboard"
+if [[ -d "$VIDCLAW_DIR" ]]; then
+  if curl -sf --connect-timeout 3 http://127.0.0.1:3333 >/dev/null 2>&1; then
+    check_ok "VidClaw dashboard responding"
+  else
+    check_warn "VidClaw dashboard not responding at http://127.0.0.1:3333"
+  fi
+fi
+
 printf '\nSummary: %d ok, %d warnings\n' "$ok" "$warn"
 if [[ "$warn" -gt 0 ]]; then
   exit 2
