@@ -12,6 +12,13 @@ Hyphen-style aliases for GSD commands:
 - `/gsd-verify-work`
 - `/gsd-resume-work`
 - `/gsd-new-project`
+- `/gsd-project-mode`
+- `/gsd-project-bind`
+- `/cgsd` (control-plane wrapper for project activity settings)
+- `/cgsd-panel`, `/cgsd-status`, `/cgsd-check`
+- `/cgsd-off`, `/cgsd-medium`, `/cgsd-high`
+- `/cgsd-i0`, `/cgsd-i20`, `/cgsd-i40`, `/cgsd-i60`, `/cgsd-i80`, `/cgsd-i100`
+- `/badgeid-activity` (legacy alias for badgeid project mode)
 
 ## Runtime path resolution
 
@@ -42,6 +49,62 @@ Supported keys:
 - `autoThreadOnNewEpic`: `true|false` (default `true`) for `/gsd-new-epic` forum thread creation attempt
 - `discordForumTarget`: Discord forum channel target used by `/gsd-new-epic`
 - `discordAccountId`: optional channel account id for thread create command
+- `projectActivityRegistry`: path to project activity registry JSON (default: `~/.openclaw/cgsd-project-activity.json`)
+- `defaultProjectKey`: optional default project key for activity control
+
+### Project Activity Control (`/gsd-project-mode`)
+
+Manage per-project worker intensity directly from chat:
+
+- `/gsd-project-mode status [this|<project>|all]`
+- `/gsd-project-mode check [this|<project>|all]`
+- `/gsd-project-mode set <this|<project>|all> off|medium|high`
+- `/gsd-project-mode <off|medium|high> [this|<project>|all]`
+- `/gsd-project-mode <project> <off|medium|high>`
+
+Resolution rules:
+- `this` resolves project from current Discord channel/thread via registry mapping.
+- `all` applies to all registered projects.
+- explicit `<project>` targets one project key.
+
+### Project Context Binding (`/gsd-project-bind`)
+
+Bind current channel/thread to a project key so `this` works reliably:
+
+- `/gsd-project-bind <project>`
+- `/gsd-project-bind show`
+- `/gsd-project-bind show all`
+
+### CGSD Control Plane (`/cgsd`)
+
+Unified Discord-facing control interface (wizard-style command surface):
+
+- `/cgsd`
+- `/cgsd panel`
+- `/cgsd add-project <project> <path>`
+- `/cgsd status [this|<project>|all]`
+- `/cgsd check [this|<project>|all]`
+- `/cgsd set <this|<project>|all> off|medium|high`
+- `/cgsd <off|medium|high> [this|<project>|all]`
+- `/cgsd intensity [this|<project>|all] <0-100>`
+- `/cgsd bind <project>`
+- `/cgsd projects`
+
+Folder binding:
+- `/cgsd add-project <project> <path>` writes/updates `projects.<project>.projectRoot` in:
+  - `~/.openclaw/cgsd-project-activity.json`
+- `/cgsd bind <project>` maps current channel/thread to that project key.
+
+Click-only quick commands (no args):
+- `/cgsd-panel`, `/cgsd-status`, `/cgsd-check`
+- `/cgsd-off`, `/cgsd-medium`, `/cgsd-high`
+- `/cgsd-all-off`, `/cgsd-all-medium`, `/cgsd-all-high`
+- `/cgsd-i0`, `/cgsd-i20`, `/cgsd-i40`, `/cgsd-i60`, `/cgsd-i80`, `/cgsd-i100`
+
+Intensity mapping:
+- `0-19` -> `off`
+- `20-69` -> `medium`
+- `70-100` -> `high`
 
 ## Discord slash authorization
 

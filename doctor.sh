@@ -113,6 +113,44 @@ if [[ -d "$VIDCLAW_DIR" ]]; then
   fi
 fi
 
+# Check Docker containers (if docker available)
+if command -v docker >/dev/null 2>&1; then
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -q .; then
+    check_ok "Docker containers running"
+  else
+    check_warn "No Docker containers running"
+  fi
+fi
+
+# Check OpenClaw config syntax
+if [[ -f "$CONFIG_PATH" ]] && command -v jq >/dev/null 2>&1; then
+  if jq empty "$CONFIG_PATH" 2>/dev/null; then
+    check_ok "OpenClaw config JSON valid"
+  else
+    check_warn "OpenClaw config has syntax errors"
+  fi
+fi
+
+# Check Gitea runner if configured
+GITEA_RUNNER_HOST="${GITEA_RUNNER_HOST:-192.168.65.131}"
+if timeout 5 ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no "root@${GITEA_RUNNER_HOST}" 'exit 0' 2>/dev/null; then
+  if ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no "root@${GITEA_RUNNER_HOST}" 'systemctl is-active gitea-runner' 2>/dev/null | grep -q active; then
+    check_ok "Gitea runner service active"
+  else
+    check_warn "Gitea runner service not active"
+  fi
+fi
+
+# Check for required OpenClaw directories
+REQUIRED_DIRS=("workspace" "extensions" "configs")
+for dir in "${REQUIRED_DIRS[@]}"; do
+  if [[ -d "$OPENCLAW_DIR/$dir" ]]; then
+    check_ok "OpenClaw $dir directory exists"
+  else
+    check_warn "Missing OpenClaw directory: $dir"
+  fi
+done
+
 printf '\nSummary: %d ok, %d warnings\n' "$ok" "$warn"
 if [[ "$warn" -gt 0 ]]; then
   exit 2

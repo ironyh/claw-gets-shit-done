@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const ALIASES = {
   "gsd-add-todo": "add-todo",
@@ -13,6 +14,8 @@ const ALIASES = {
   "gsd-verify-work": "verify-work",
   "gsd-resume-work": "resume-work",
 };
+
+const CGSD_CLICK_INTENSITY_LEVELS = [0, 20, 40, 60, 80, 100];
 
 function truncate(text, max = 1600) {
   if (!text) return "";
@@ -227,6 +230,14 @@ function commandHelp() {
     "- /gsd-execute-phase <n>",
     "- /gsd-verify-work [n]",
     "- /gsd-resume-work",
+    "- /gsd-project-mode [status|check|set]",
+    "- /gsd-project-bind <project>",
+    "- /cgsd [status|check|set|intensity|bind|projects]",
+    "- /cgsd add-project <project> <path>",
+    "- /cgsd-panel, /cgsd-status, /cgsd-check",
+    "- /cgsd-off, /cgsd-medium, /cgsd-high",
+    "- /cgsd-i0, /cgsd-i20, /cgsd-i40, /cgsd-i60, /cgsd-i80, /cgsd-i100",
+    "- /badgeid-activity (legacy alias)",
     "",
     "Hyphen-kommandon finns för bättre slash-UX i OpenClaw.",
   ].join("\n");
@@ -244,6 +255,836 @@ function buildSkillPrompt(gsdCommand, args) {
 
 function userFallbackHint(gsdCommand, args) {
   return `Prova igen med: /gsd ${gsdCommand}${args ? ` ${args}` : ""}`;
+}
+
+function tokenizeArgs(raw) {
+  return (raw ?? "")
+    .toString()
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function normalizeProjectMode(value) {
+  const v = (value ?? "").toString().trim().toLowerCase();
+  if (!v) return "";
+  if (["off", "inaktiv", "inactive", "disable", "disabled", "none", "0", "av"].includes(v)) return "off";
+  if (["medium", "medel", "normal", "1"].includes(v)) return "medium";
+  if (["high", "hog", "hög", "very-active", "2"].includes(v)) return "high";
+  return "";
+}
+
+function parseIntensityPercent(value) {
+  const raw = (value ?? "").toString().trim();
+  if (!raw) return null;
+  const normalized = raw.endsWith("%") ? raw.slice(0, -1).trim() : raw;
+  if (!/^-?\d+$/.test(normalized)) return null;
+  const parsed = Number.parseInt(normalized, 10);
+  if (!Number.isFinite(parsed)) return null;
+  if (parsed < 0 || parsed > 100) return null;
+  return parsed;
+}
+
+function modeFromIntensity(percent) {
+  if (percent <= 19) return "off";
+  if (percent <= 69) return "medium";
+  return "high";
+}
+
+function normalizeProjectSelector(value) {
+  const v = (value ?? "").toString().trim().toLowerCase();
+  if (!v) return "this";
+  if (["this", "current", "here", "channel", "kanal", "thread"].includes(v)) return "this";
+  if (["all", "alla", "*", "global"].includes(v)) return "all";
+  return v;
+}
+
+function normalizeProjectKey(value) {
+  const raw = (value ?? "").toString().trim().toLowerCase();
+  if (!raw) return "";
+  if (!/^[a-z0-9][a-z0-9._-]*$/.test(raw)) return "";
+  return raw;
+}
+
+function parseProjectModeRequest(rawArgs) {
+  const args = tokenizeArgs(rawArgs);
+  if (args.length === 0) {
+    return { action: "status", selector: "this", mode: "" };
+  }
+
+  const first = args[0].toLowerCase();
+  if (["help", "hjalp", "hjälp"].includes(first)) {
+    return { action: "help", selector: "this", mode: "" };
+  }
+  if (first === "set") {
+    const selector = normalizeProjectSelector(args[1] ?? "this");
+    const mode = normalizeProjectMode(args[2] ?? "");
+    if (!mode) return { error: "Usage: /gsd-project-mode set <project|this|all> off|medium|high" };
+    return { action: "set", selector, mode };
+  }
+  if (["status", "check"].includes(first)) {
+    return { action: first, selector: normalizeProjectSelector(args[1] ?? "this"), mode: "" };
+  }
+
+  const firstMode = normalizeProjectMode(first);
+  if (firstMode) {
+    return { action: "set", selector: normalizeProjectSelector(args[1] ?? "this"), mode: firstMode };
+  }
+
+  const selector = normalizeProjectSelector(first);
+  const second = (args[1] ?? "").toLowerCase();
+  if (!second) return { action: "status", selector, mode: "" };
+
+  if (["status", "check"].includes(second)) {
+    return { action: second, selector, mode: "" };
+  }
+
+  const secondMode = normalizeProjectMode(second);
+  if (secondMode) {
+    return { action: "set", selector, mode: secondMode };
+  }
+
+  return { error: "Usage: /gsd-project-mode [status|check|set] [project|this|all] [off|medium|high]" };
+}
+
+function translateBadgeidActivityArgs(rawArgs) {
+  const args = tokenizeArgs(rawArgs);
+  if (args.length === 0) return "status badgeid";
+
+  const first = (args[0] ?? "").toLowerCase();
+  if (["help", "hjalp", "hjälp"].includes(first)) return "help";
+
+  if (first === "set") {
+    const second = (args[1] ?? "").toLowerCase();
+    const third = (args[2] ?? "").toLowerCase();
+    const secondMode = normalizeProjectMode(second);
+    const thirdMode = normalizeProjectMode(third);
+    if (secondMode) return `set badgeid ${secondMode}`;
+    if (thirdMode) return `set ${second} ${thirdMode}`;
+    return "help";
+  }
+
+  if (["status", "check"].includes(first)) return `${first} badgeid`;
+
+  const mode = normalizeProjectMode(first);
+  if (mode) return `${mode} badgeid`;
+
+  return rawArgs;
+}
+
+function projectModeHelp() {
+  return [
+    "Project activity mode:",
+    "- /gsd-project-mode status [this|<project>|all]",
+    "- /gsd-project-mode check [this|<project>|all]",
+    "- /gsd-project-mode set <this|<project>|all> off|medium|high",
+    "- /gsd-project-mode <off|medium|high> [this|<project>|all]",
+    "- /gsd-project-mode <project> <off|medium|high>",
+    "",
+    "Example:",
+    "- /gsd-project-mode high",
+    "- /gsd-project-mode badgeid medium",
+    "- /gsd-project-mode check all",
+  ].join("\n");
+}
+
+function projectBindHelp() {
+  return [
+    "Project binding:",
+    "- /gsd-project-bind <project>",
+    "- /gsd-project-bind show [this|all]",
+    "",
+    "Examples:",
+    "- /gsd-project-bind badgeid",
+    "- /gsd-project-bind show",
+    "- /gsd-project-bind show all",
+  ].join("\n");
+}
+
+function cgsdHelp() {
+  return [
+    "CGSD control plane:",
+    "- /cgsd",
+    "- /cgsd panel",
+    "- /cgsd add-project <project> <path>",
+    "- /cgsd status [this|<project>|all]",
+    "- /cgsd check [this|<project>|all]",
+    "- /cgsd set <this|<project>|all> off|medium|high",
+    "- /cgsd <off|medium|high> [this|<project>|all]",
+    "- /cgsd intensity [this|<project>|all] <0-100>",
+    "- /cgsd bind <project>",
+    "- /cgsd projects",
+    "",
+    "Click-only quick commands (no args):",
+    "- /cgsd-panel, /cgsd-status, /cgsd-check",
+    "- /cgsd-off, /cgsd-medium, /cgsd-high",
+    "- /cgsd-i0, /cgsd-i20, /cgsd-i40, /cgsd-i60, /cgsd-i80, /cgsd-i100",
+    "",
+    "Intensity mapping:",
+    "- 0-19 -> off",
+    "- 20-69 -> medium",
+    "- 70-100 -> high",
+  ].join("\n");
+}
+
+function parseCgsdRequest(rawArgs) {
+  const raw = (rawArgs ?? "").toString().trim();
+  if (!raw) return { action: "dashboard" };
+
+  const addMatch = raw.match(/^(add-project|add)\s+(\S+)\s+(.+)$/i);
+  if (addMatch) {
+    const projectKey = normalizeProjectKey(addMatch[2] ?? "");
+    const projectRoot = (addMatch[3] ?? "").toString().trim();
+    if (!projectKey || !projectRoot) {
+      return { action: "help", error: "Usage: /cgsd add-project <project> <path>" };
+    }
+    return { action: "add-project", projectKey, projectRoot };
+  }
+  if (/^(add-project|add)\b/i.test(raw)) {
+    return { action: "help", error: "Usage: /cgsd add-project <project> <path>" };
+  }
+
+  const args = tokenizeArgs(raw);
+
+  const first = (args[0] ?? "").toLowerCase();
+  if (["panel", "dashboard"].includes(first)) {
+    return { action: "dashboard" };
+  }
+  if (["help", "hjalp", "hjälp", "menu"].includes(first)) {
+    return { action: "help" };
+  }
+  if (["projects", "list", "catalog"].includes(first)) {
+    return { action: "projects" };
+  }
+  if (first === "bind") {
+    const project = (args[1] ?? "").toString().trim();
+    if (!project) return { action: "help", error: "Usage: /cgsd bind <project>" };
+    return { action: "bind", bindArgs: project };
+  }
+  if (["status", "check"].includes(first)) {
+    return { action: "project-mode", modeArgs: `${first} ${normalizeProjectSelector(args[1] ?? "this")}` };
+  }
+  if (first === "set") {
+    const selector = normalizeProjectSelector(args[1] ?? "this");
+    const modeToken = args[2] ?? "";
+    const mode = normalizeProjectMode(modeToken);
+    if (mode) return { action: "project-mode", modeArgs: `set ${selector} ${mode}` };
+    const intensity = parseIntensityPercent(modeToken);
+    if (intensity !== null) {
+      const mapped = modeFromIntensity(intensity);
+      return {
+        action: "project-mode",
+        modeArgs: `set ${selector} ${mapped}`,
+        note: `Intensity ${intensity}% mapped to mode=${mapped}.`,
+      };
+    }
+    return { action: "help", error: "Usage: /cgsd set <this|<project>|all> off|medium|high|<0-100>" };
+  }
+  if (["intensity", "resources", "resource", "power", "load"].includes(first)) {
+    let selector = "this";
+    let intensityToken = args[1] ?? "";
+    if (args.length >= 3) {
+      selector = normalizeProjectSelector(args[1] ?? "this");
+      intensityToken = args[2] ?? "";
+    }
+    const intensity = parseIntensityPercent(intensityToken);
+    if (intensity === null) {
+      return { action: "help", error: "Usage: /cgsd intensity [this|<project>|all] <0-100>" };
+    }
+    const mapped = modeFromIntensity(intensity);
+    return {
+      action: "project-mode",
+      modeArgs: `set ${selector} ${mapped}`,
+      note: `Intensity ${intensity}% mapped to mode=${mapped}.`,
+    };
+  }
+
+  const firstMode = normalizeProjectMode(first);
+  if (firstMode) {
+    return {
+      action: "project-mode",
+      modeArgs: `set ${normalizeProjectSelector(args[1] ?? "this")} ${firstMode}`,
+    };
+  }
+
+  const firstIntensity = parseIntensityPercent(first);
+  if (firstIntensity !== null) {
+    const mapped = modeFromIntensity(firstIntensity);
+    return {
+      action: "project-mode",
+      modeArgs: `set ${normalizeProjectSelector(args[1] ?? "this")} ${mapped}`,
+      note: `Intensity ${firstIntensity}% mapped to mode=${mapped}.`,
+    };
+  }
+
+  const selector = normalizeProjectSelector(first);
+  const secondToken = (args[1] ?? "").toString().trim();
+  if (!secondToken) {
+    return { action: "project-mode", modeArgs: `status ${selector}` };
+  }
+  const secondMode = normalizeProjectMode(secondToken);
+  if (secondMode) return { action: "project-mode", modeArgs: `set ${selector} ${secondMode}` };
+  const secondIntensity = parseIntensityPercent(secondToken);
+  if (secondIntensity !== null) {
+    const mapped = modeFromIntensity(secondIntensity);
+    return {
+      action: "project-mode",
+      modeArgs: `set ${selector} ${mapped}`,
+      note: `Intensity ${secondIntensity}% mapped to mode=${mapped}.`,
+    };
+  }
+
+  return { action: "help", error: "Could not parse /cgsd command." };
+}
+
+function resolveProjectRootPath(api, ctx, projectRootRaw) {
+  const expanded = expandPath(projectRootRaw ?? "");
+  if (!expanded) return "";
+  if (path.isAbsolute(expanded)) return path.resolve(expanded);
+  const workspaceDir = resolveWorkspaceDir(api, ctx);
+  if (workspaceDir) return path.resolve(workspaceDir, expanded);
+  return path.resolve(expanded);
+}
+
+async function handleCgsdAddProject(api, ctx, req) {
+  const registryWrap = readProjectActivityRegistry(api);
+  const registry = registryWrap.data;
+  const projectKey = normalizeProjectKey(req.projectKey ?? "");
+  if (!projectKey) {
+    return { text: "Invalid project key. Use lowercase letters, numbers, dot, dash, underscore." };
+  }
+
+  const projectRoot = resolveProjectRootPath(api, ctx, req.projectRoot);
+  if (!projectRoot) {
+    return { text: "Invalid project root path." };
+  }
+  if (!fs.existsSync(projectRoot)) {
+    return { text: `Project root does not exist: ${projectRoot}` };
+  }
+  let stats;
+  try {
+    stats = fs.statSync(projectRoot);
+  } catch {
+    return { text: `Could not read project root: ${projectRoot}` };
+  }
+  if (!stats.isDirectory()) {
+    return { text: `Project root must be a directory: ${projectRoot}` };
+  }
+
+  if (!registry.projects || typeof registry.projects !== "object" || Array.isArray(registry.projects)) {
+    registry.projects = {};
+  }
+
+  const existing = registry.projects[projectKey] ?? {};
+  const previousRoot = (existing?.projectRoot ?? "").toString().trim();
+  registry.projects[projectKey] = {
+    projectKey,
+    projectRoot,
+    currentMode: normalizeProjectMode(existing?.currentMode ?? "") || "high",
+    delivery:
+      existing?.delivery && typeof existing.delivery === "object" && !Array.isArray(existing.delivery)
+        ? { ...existing.delivery }
+        : {},
+    jobs: Array.isArray(existing?.jobs) ? existing.jobs : [],
+  };
+  writeProjectActivityRegistry(registryWrap.path, registry);
+
+  const lines = [];
+  if (previousRoot && previousRoot !== projectRoot) {
+    lines.push(`Updated project '${projectKey}' root:`);
+    lines.push(`- from: ${previousRoot}`);
+    lines.push(`- to:   ${projectRoot}`);
+  } else {
+    lines.push(`Registered project '${projectKey}' with root: ${projectRoot}`);
+  }
+  lines.push(`Jobs in registry: ${registry.projects[projectKey].jobs.length}`);
+  lines.push("");
+  lines.push("Next:");
+  lines.push(`- /cgsd bind ${projectKey}`);
+  lines.push("- /cgsd status");
+  if (registry.projects[projectKey].jobs.length === 0) {
+    lines.push("- This project has no jobs yet; run CGSD install for this project to add cron jobs.");
+  }
+  return { text: lines.join("\n") };
+}
+
+function renderCgsdProjects(registry) {
+  const keys = Object.keys(registry.projects ?? {});
+  if (keys.length === 0) {
+    return "No projects found in activity registry.";
+  }
+
+  const map = registry.channelProjectMap && typeof registry.channelProjectMap === "object" ? registry.channelProjectMap : {};
+  const lines = ["Registered projects:"];
+  for (const key of keys.sort()) {
+    const project = registry.projects[key] ?? {};
+    const mode = (project.currentMode ?? "unknown").toString();
+    const refs = Object.entries(map)
+      .filter(([, projectKey]) => projectKey === key)
+      .map(([ref]) => ref);
+    const boundSuffix =
+      refs.length === 0 ? "no bindings" : `${refs.length} binding${refs.length === 1 ? "" : "s"}`;
+    lines.push(`- ${key}: mode=${mode}, ${boundSuffix}`);
+  }
+  return lines.join("\n");
+}
+
+async function handleCgsd(api, ctx) {
+  const req = parseCgsdRequest(ctx.args ?? "");
+  const registryWrap = readProjectActivityRegistry(api);
+  const registry = registryWrap.data;
+
+  if (req.action === "help") {
+    const prefix = req.error ? `${req.error}\n\n` : "";
+    return { text: `${prefix}${cgsdHelp()}` };
+  }
+
+  if (req.action === "projects") {
+    return { text: truncate(`${renderCgsdProjects(registry)}\n\n${projectBindHelp()}`, 1900) };
+  }
+
+  if (req.action === "add-project") {
+    return await handleCgsdAddProject(api, ctx, req);
+  }
+
+  if (req.action === "bind") {
+    return await handleProjectBind(api, { ...ctx, args: req.bindArgs ?? "" });
+  }
+
+  if (req.action === "dashboard") {
+    const status = await handleProjectMode(api, { ...ctx, args: "status this" });
+    const bindings = renderProjectBindings(registry, "this", ctx);
+    return {
+      text: truncate(
+        [
+          "CGSD Control Dashboard",
+          "",
+          status.text ?? "",
+          "",
+          bindings,
+          "",
+          "Quick actions:",
+          "- /cgsd-panel",
+          "- /cgsd-status",
+          "- /cgsd-check",
+          "- /cgsd off",
+          "- /cgsd medium",
+          "- /cgsd high",
+          "- /cgsd intensity 80",
+          "- /cgsd projects, /cgsd bind <project>",
+          "",
+          "Click-only intensity presets:",
+          "- /cgsd-i0, /cgsd-i20, /cgsd-i40, /cgsd-i60, /cgsd-i80, /cgsd-i100",
+        ].join("\n"),
+        1900,
+      ),
+    };
+  }
+
+  const result = await handleProjectMode(api, { ...ctx, args: req.modeArgs ?? "" });
+  if (!req.note) return result;
+  return { text: truncate(`${req.note}\n\n${result.text ?? ""}`, 1900) };
+}
+
+function parseProjectBindRequest(rawArgs) {
+  const args = tokenizeArgs(rawArgs);
+  if (args.length === 0) return { action: "help", selector: "this", project: "" };
+
+  const first = (args[0] ?? "").toLowerCase();
+  if (["help", "hjalp", "hjälp"].includes(first)) return { action: "help", selector: "this", project: "" };
+  if (["show", "status", "list"].includes(first)) {
+    return {
+      action: "show",
+      selector: normalizeProjectSelector(args[1] ?? "this"),
+      project: "",
+    };
+  }
+
+  return {
+    action: "bind",
+    selector: "this",
+    project: first,
+  };
+}
+
+function resolveProjectActivityRegistryPath(api) {
+  const cfg = getPluginConfig(api);
+  const localCfg = readLocalPluginConfig();
+  const home = process.env.HOME || "";
+
+  const selected = expandPath(
+    pickDefined(
+      process.env.CGSD_PROJECT_ACTIVITY_REGISTRY,
+      cfg.projectActivityRegistry,
+      localCfg.projectActivityRegistry,
+      home ? path.join(home, ".openclaw", "cgsd-project-activity.json") : "",
+    ),
+  );
+  return selected;
+}
+
+function ensureProjectActivityRegistryShape(data) {
+  const out = data && typeof data === "object" && !Array.isArray(data) ? { ...data } : {};
+  if (!out.version || typeof out.version !== "number") out.version = 1;
+  if (!out.projects || typeof out.projects !== "object" || Array.isArray(out.projects)) out.projects = {};
+  if (!out.channelProjectMap || typeof out.channelProjectMap !== "object" || Array.isArray(out.channelProjectMap)) {
+    out.channelProjectMap = {};
+  }
+  return out;
+}
+
+function readProjectActivityRegistry(api) {
+  const registryPath = resolveProjectActivityRegistryPath(api);
+  if (!registryPath) {
+    return { path: "", data: ensureProjectActivityRegistryShape({}) };
+  }
+  if (!fs.existsSync(registryPath)) {
+    return { path: registryPath, data: ensureProjectActivityRegistryShape({}) };
+  }
+  try {
+    const raw = fs.readFileSync(registryPath, "utf8");
+    const parsed = JSON.parse(raw);
+    return { path: registryPath, data: ensureProjectActivityRegistryShape(parsed) };
+  } catch {
+    return { path: registryPath, data: ensureProjectActivityRegistryShape({}) };
+  }
+}
+
+function writeProjectActivityRegistry(registryPath, data) {
+  if (!registryPath) return;
+  fs.mkdirSync(path.dirname(registryPath), { recursive: true });
+  fs.writeFileSync(registryPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+function resolveContextRefs(ctx) {
+  const refs = [];
+  const pushRef = (value) => {
+    const v = (value ?? "").toString().trim();
+    if (v) refs.push(v);
+  };
+
+  pushRef(ctx?.messageThreadId);
+  const keys = [
+    "target",
+    "to",
+    "channelId",
+    "messageChannelId",
+    "channelTargetId",
+    "roomId",
+    "threadId",
+    "replyTo",
+    "deliveryTarget",
+  ];
+  for (const key of keys) pushRef(ctx?.[key]);
+
+  const dc = ctx?.deliveryContext;
+  if (dc && typeof dc === "object") {
+    pushRef(dc.to);
+    pushRef(dc.target);
+    pushRef(dc.threadId);
+    pushRef(dc.channelId);
+  }
+
+  return uniq(refs);
+}
+
+function resolveProjectKeysForSelector(registry, selector, ctx) {
+  const projects = registry?.projects ?? {};
+  const keys = Object.keys(projects);
+  if (keys.length === 0) return { error: "No projects found in activity registry yet." };
+
+  if (selector === "all") return { keys };
+
+  if (selector === "this") {
+    const refs = resolveContextRefs(ctx);
+    const found = new Set();
+    const map = registry?.channelProjectMap ?? {};
+    for (const ref of refs) {
+      const mapped = (map?.[ref] ?? "").toString().trim();
+      if (mapped && projects[mapped]) found.add(mapped);
+    }
+    if (found.size === 0) {
+      for (const key of keys) {
+        const project = projects[key] ?? {};
+        const deliveryTarget = (project?.delivery?.target ?? "").toString().trim();
+        const forumTarget = (project?.delivery?.forumTarget ?? "").toString().trim();
+        if (refs.includes(deliveryTarget) || refs.includes(forumTarget)) found.add(key);
+      }
+    }
+    if (found.size === 0 && keys.length === 1) found.add(keys[0]);
+    if (found.size === 0) {
+      return {
+        error: `Could not resolve project for current channel/thread.\nKnown refs: ${refs.join(", ") || "none"}`,
+      };
+    }
+    return { keys: [...found] };
+  }
+
+  if (projects[selector]) return { keys: [selector] };
+  const ci = keys.find((k) => k.toLowerCase() === selector.toLowerCase());
+  if (ci) return { keys: [ci] };
+  return { error: `Unknown project '${selector}'. Known: ${keys.join(", ")}` };
+}
+
+function resolveExpectedModeSpec(job, mode) {
+  const modes = job?.modes ?? {};
+  let spec = modes[mode];
+  if (!spec && mode === "off") spec = { enabled: false };
+  if (!spec) spec = modes.high ?? {};
+  const enabled = spec?.enabled !== false;
+  const cron = (spec?.cron ?? "").toString().trim();
+  return { enabled, cron };
+}
+
+function renderProjectBindings(registry, selector, ctx) {
+  const map = registry?.channelProjectMap ?? {};
+  const refs = resolveContextRefs(ctx);
+  if (selector === "all") {
+    const entries = Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]));
+    if (entries.length === 0) return "No channel/thread bindings yet.";
+    const lines = ["Channel/thread bindings:"];
+    for (const [ref, project] of entries) {
+      lines.push(`- ${ref} -> ${project}`);
+    }
+    return lines.join("\n");
+  }
+
+  if (refs.length === 0) return "No current channel/thread reference found in context.";
+  const lines = ["Current context bindings:"];
+  let found = 0;
+  for (const ref of refs) {
+    const project = (map[ref] ?? "").toString().trim();
+    if (!project) continue;
+    lines.push(`- ${ref} -> ${project}`);
+    found += 1;
+  }
+  if (found === 0) {
+    lines.push("- none");
+  }
+  return lines.join("\n");
+}
+
+async function readCronJobs(api) {
+  const raw = await runCommand(api, ["openclaw", "cron", "list", "--all", "--json"], {
+    timeoutMs: 45000,
+  });
+  try {
+    const parsed = JSON.parse(raw);
+    const jobs = Array.isArray(parsed?.jobs) ? parsed.jobs : [];
+    return jobs;
+  } catch {
+    throw new Error("Could not parse cron list JSON.");
+  }
+}
+
+function findRuntimeJob(jobs, jobSpec) {
+  const id = (jobSpec?.id ?? "").toString().trim();
+  const name = (jobSpec?.name ?? "").toString().trim();
+  if (id) {
+    const byId = jobs.find((j) => (j?.id ?? "").toString().trim() === id);
+    if (byId) return byId;
+  }
+  if (name) {
+    const byName = jobs.find((j) => (j?.name ?? "").toString().trim() === name);
+    if (byName) return byName;
+  }
+  return null;
+}
+
+function renderProjectStatus(registry, selectedKeys, jobs) {
+  const lines = [];
+  for (const key of selectedKeys) {
+    const project = registry.projects[key] ?? {};
+    const mode = normalizeProjectMode(project.currentMode) || "high";
+    const target = (project?.delivery?.target ?? "-").toString().trim() || "-";
+    lines.push(`Project ${key} (mode=${mode}, target=${target})`);
+    const projectJobs = Array.isArray(project.jobs) ? project.jobs : [];
+    if (projectJobs.length === 0) {
+      lines.push("- No jobs registered.");
+      lines.push("");
+      continue;
+    }
+    for (const job of projectJobs) {
+      const runtime = findRuntimeJob(jobs, job);
+      const expected = resolveExpectedModeSpec(job, mode);
+      if (!runtime) {
+        lines.push(`- ${job.name || job.key}: missing in cron list (expected ${expected.enabled ? "enabled" : "paused"})`);
+        continue;
+      }
+      const state = runtime.enabled ? "enabled" : "paused";
+      const expr = runtime?.schedule?.expr ?? "-";
+      const expectedStr = expected.enabled
+        ? `enabled${expected.cron ? ` @ ${expected.cron}` : ""}`
+        : "paused";
+      lines.push(`- ${runtime.name}: ${state}, cron=${expr}, expected=${expectedStr}`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n").trim();
+}
+
+function evaluateProjectMode(registry, selectedKeys, jobs) {
+  const mismatches = [];
+  let checked = 0;
+  for (const key of selectedKeys) {
+    const project = registry.projects[key] ?? {};
+    const mode = normalizeProjectMode(project.currentMode) || "high";
+    const projectJobs = Array.isArray(project.jobs) ? project.jobs : [];
+    for (const job of projectJobs) {
+      checked += 1;
+      const runtime = findRuntimeJob(jobs, job);
+      const expected = resolveExpectedModeSpec(job, mode);
+      const label = `${key}/${job.name || job.key || job.id || "job"}`;
+      if (!runtime) {
+        mismatches.push(`${label}: missing in cron list`);
+        continue;
+      }
+      const isEnabled = !!runtime.enabled;
+      if (expected.enabled !== isEnabled) {
+        mismatches.push(`${label}: expected ${expected.enabled ? "enabled" : "paused"}, got ${isEnabled ? "enabled" : "paused"}`);
+        continue;
+      }
+      const actualCron = (runtime?.schedule?.expr ?? "").toString().trim();
+      if (expected.enabled && expected.cron && actualCron && actualCron !== expected.cron) {
+        mismatches.push(`${label}: expected cron '${expected.cron}', got '${actualCron}'`);
+      }
+    }
+  }
+  return { checked, mismatches };
+}
+
+async function applyProjectMode(api, registry, selectedKeys, mode) {
+  const lines = [];
+  for (const key of selectedKeys) {
+    const project = registry.projects[key] ?? {};
+    const projectJobs = Array.isArray(project.jobs) ? project.jobs : [];
+    lines.push(`Project ${key}: set mode ${mode}`);
+    for (const job of projectJobs) {
+      const expected = resolveExpectedModeSpec(job, mode);
+      const id = (job?.id ?? "").toString().trim();
+      const name = (job?.name ?? job?.key ?? "job").toString();
+      if (!id) {
+        lines.push(`- ${name}: skipped (missing job id in registry)`);
+        continue;
+      }
+      try {
+        if (!expected.enabled) {
+          await runCommand(api, ["openclaw", "cron", "disable", id], { timeoutMs: 45000 });
+          lines.push(`- ${name}: paused`);
+          continue;
+        }
+        if (expected.cron) {
+          await runCommand(api, ["openclaw", "cron", "edit", id, "--enable", "--cron", expected.cron], {
+            timeoutMs: 45000,
+          });
+          lines.push(`- ${name}: enabled @ ${expected.cron}`);
+        } else {
+          await runCommand(api, ["openclaw", "cron", "enable", id], { timeoutMs: 45000 });
+          lines.push(`- ${name}: enabled`);
+        }
+      } catch (err) {
+        lines.push(`- ${name}: failed (${truncate(String(err?.message ?? err), 140)})`);
+      }
+    }
+    project.currentMode = mode;
+    lines.push("");
+  }
+  return lines.join("\n").trim();
+}
+
+async function handleProjectMode(api, ctx) {
+  const request = parseProjectModeRequest(ctx.args ?? "");
+  if (request.error) return { text: `${request.error}\n\n${projectModeHelp()}` };
+  if (request.action === "help") return { text: projectModeHelp() };
+
+  const registryWrap = readProjectActivityRegistry(api);
+  const registry = registryWrap.data;
+  const resolved = resolveProjectKeysForSelector(registry, request.selector, ctx);
+  if (resolved.error) return { text: `${resolved.error}\n\n${projectModeHelp()}` };
+  const selectedKeys = resolved.keys;
+
+  try {
+    if (request.action === "set") {
+      const applySummary = await applyProjectMode(api, registry, selectedKeys, request.mode);
+      writeProjectActivityRegistry(registryWrap.path, registry);
+      const jobs = await readCronJobs(api);
+      const evalResult = evaluateProjectMode(registry, selectedKeys, jobs);
+      const verdict =
+        evalResult.mismatches.length === 0
+          ? `CHECK_OK: ${evalResult.checked} jobs match mode=${request.mode}.`
+          : `CHECK_FAIL: ${evalResult.mismatches.length} mismatch(es).\n- ${evalResult.mismatches.join("\n- ")}`;
+      return { text: truncate(`${applySummary}\n\n${verdict}`, 1900) };
+    }
+
+    const jobs = await readCronJobs(api);
+    if (request.action === "status") {
+      return { text: truncate(renderProjectStatus(registry, selectedKeys, jobs), 1900) };
+    }
+
+    const evalResult = evaluateProjectMode(registry, selectedKeys, jobs);
+    if (evalResult.mismatches.length === 0) {
+      return { text: `CHECK_OK: ${evalResult.checked} jobs match expected mode.` };
+    }
+    return {
+      text: truncate(
+        `CHECK_FAIL: ${evalResult.mismatches.length} mismatch(es).\n- ${evalResult.mismatches.join("\n- ")}`,
+        1900,
+      ),
+    };
+  } catch (err) {
+    return { text: `gsd-project-mode failed: ${truncate(String(err?.message ?? err), 900)}` };
+  }
+}
+
+async function handleBadgeidActivity(api, ctx) {
+  const mapped = translateBadgeidActivityArgs(ctx.args ?? "");
+  return await handleProjectMode(api, { ...ctx, args: mapped });
+}
+
+async function handleProjectBind(api, ctx) {
+  const req = parseProjectBindRequest(ctx.args ?? "");
+  if (req.action === "help") return { text: projectBindHelp() };
+
+  const registryWrap = readProjectActivityRegistry(api);
+  const registry = registryWrap.data;
+
+  if (req.action === "show") {
+    return { text: renderProjectBindings(registry, req.selector, ctx) };
+  }
+
+  const project = req.project;
+  const knownProjects = Object.keys(registry.projects ?? {});
+  if (!project) return { text: projectBindHelp() };
+  if (!knownProjects.includes(project)) {
+    const ci = knownProjects.find((k) => k.toLowerCase() === project.toLowerCase());
+    if (ci) {
+      req.project = ci;
+    } else {
+      return {
+        text: `Unknown project '${project}'. Known: ${knownProjects.join(", ") || "none"}\n\n${projectBindHelp()}`,
+      };
+    }
+  }
+
+  const finalProject = req.project;
+  const refs = resolveContextRefs(ctx);
+  if (refs.length === 0) {
+    return { text: "Could not find channel/thread reference in current context." };
+  }
+
+  if (!registry.channelProjectMap || typeof registry.channelProjectMap !== "object") {
+    registry.channelProjectMap = {};
+  }
+  for (const ref of refs) {
+    registry.channelProjectMap[ref] = finalProject;
+  }
+  writeProjectActivityRegistry(registryWrap.path, registry);
+
+  const lines = [
+    `Bound ${refs.length} ref(s) to project '${finalProject}':`,
+    ...refs.map((r) => `- ${r}`),
+  ];
+  return { text: lines.join("\n") };
 }
 
 function parseBool(value, fallback = false) {
@@ -265,7 +1106,8 @@ function pickDefined(...values) {
 }
 
 function readLocalPluginConfig() {
-  const localPath = path.join(__dirname, "config.local.json");
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const localPath = path.join(moduleDir, "config.local.json");
   if (!fs.existsSync(localPath)) return {};
   try {
     const raw = fs.readFileSync(localPath, "utf8");
@@ -859,6 +1701,75 @@ async function forwardToGsd(api, ctx, gsdCommand) {
   };
 }
 
+function registerCgsdClickCommands(api) {
+  const quickCommands = [
+    {
+      name: "cgsd-panel",
+      description: "Open CGSD dashboard (click-first surface).",
+      args: "",
+    },
+    {
+      name: "cgsd-status",
+      description: "Show activity status for the current bound project.",
+      args: "status this",
+    },
+    {
+      name: "cgsd-check",
+      description: "Check current bound project against expected cron state.",
+      args: "check this",
+    },
+    {
+      name: "cgsd-off",
+      description: "Set current bound project to off mode.",
+      args: "set this off",
+    },
+    {
+      name: "cgsd-medium",
+      description: "Set current bound project to medium mode.",
+      args: "set this medium",
+    },
+    {
+      name: "cgsd-high",
+      description: "Set current bound project to high mode.",
+      args: "set this high",
+    },
+    {
+      name: "cgsd-all-off",
+      description: "Set all registered projects to off mode.",
+      args: "set all off",
+    },
+    {
+      name: "cgsd-all-medium",
+      description: "Set all registered projects to medium mode.",
+      args: "set all medium",
+    },
+    {
+      name: "cgsd-all-high",
+      description: "Set all registered projects to high mode.",
+      args: "set all high",
+    },
+  ];
+
+  for (const intensity of CGSD_CLICK_INTENSITY_LEVELS) {
+    quickCommands.push({
+      name: `cgsd-i${intensity}`,
+      description: `Set current bound project intensity to ${intensity}%`,
+      args: `intensity this ${intensity}`,
+    });
+  }
+
+  for (const quick of quickCommands) {
+    api.registerCommand({
+      name: quick.name,
+      description: quick.description,
+      acceptsArgs: false,
+      handler: async (ctx) => {
+        return await handleCgsd(api, { ...ctx, args: quick.args });
+      },
+    });
+  }
+}
+
 const plugin = {
   id: "gsd-command-aliases",
   name: "GSD Command Aliases",
@@ -881,6 +1792,43 @@ const plugin = {
       acceptsArgs: false,
       handler: async () => ({ text: commandHelp() }),
     });
+
+    api.registerCommand({
+      name: "gsd-project-mode",
+      description: "Manage project activity levels (off|medium|high) from chat.",
+      acceptsArgs: true,
+      handler: async (ctx) => {
+        return await handleProjectMode(api, ctx);
+      },
+    });
+
+    api.registerCommand({
+      name: "gsd-project-bind",
+      description: "Bind current channel/thread context to a project key.",
+      acceptsArgs: true,
+      handler: async (ctx) => {
+        return await handleProjectBind(api, ctx);
+      },
+    });
+
+    api.registerCommand({
+      name: "badgeid-activity",
+      description: "Backward-compatible alias for /gsd-project-mode ... badgeid",
+      acceptsArgs: true,
+      handler: async (ctx) => {
+        return await handleBadgeidActivity(api, ctx);
+      },
+    });
+
+    api.registerCommand({
+      name: "cgsd",
+      description: "CGSD control plane for per-project activity settings.",
+      acceptsArgs: true,
+      handler: async (ctx) => {
+        return await handleCgsd(api, ctx);
+      },
+    });
+    registerCgsdClickCommands(api);
 
     api.logger.info("GSD command aliases registered");
   },

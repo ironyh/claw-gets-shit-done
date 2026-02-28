@@ -13,4 +13,5 @@
 1. `bash -n install.sh update.sh doctor.sh uninstall.sh scripts/*.sh`
 2. `shellcheck install.sh update.sh doctor.sh uninstall.sh scripts/*.sh`
 3. `./scripts/smoke-install.sh`
-4. `mkdocs build --strict`
+4. `./scripts/smoke-project-activity.sh`
+5. `mkdocs build --strict`

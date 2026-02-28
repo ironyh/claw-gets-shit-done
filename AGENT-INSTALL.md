@@ -26,6 +26,7 @@ If you have enough context:
   --enable-autoclaw \
   --enable-ralphclaw-watchdog \
   --enable-loop-kpi \
+  --enable-model-health \
   --enable-forum-daily-council \
   --enable-forum-weekly-council \
   --loop-channel discord \
@@ -39,6 +40,11 @@ Then verify:
 ./doctor.sh
 openclaw gateway health
 ```
+
+Optional chat controls after install:
+
+- `/gsd-project-bind <project-key>` in the project channel/thread
+- `/gsd-project-mode high|medium|off`
 
 After first successful install, `update.sh` can usually run without extra flags because it reuses saved install args from `cgsd-install-state.json`.
 
@@ -74,6 +80,7 @@ Ask only for:
 3) ralphclaw sub-agent parallelism
 If user does not want delivery target, use --allow-no-loop-delivery.
 Enable RalphClaw + AutoClaw + watchdog by default.
+Enable model health reporting by default.
 If Discord/forum is used, also enable forum daily + weekly councils.
 When Discord is used, include --discord-slash-allow-from "*".
 After install, run:

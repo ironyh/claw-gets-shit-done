@@ -13,6 +13,7 @@ ENABLE_AUTOLOOP=0
 ENABLE_CLAWLOOP=0
 ENABLE_AUTOLOOP_WATCHDOG=0
 ENABLE_LOOP_KPI=0
+ENABLE_MODEL_HEALTH=0
 ENABLE_GSD_BRIDGE=0
 ENABLE_FORUM_DAILY_COUNCIL=0
 ENABLE_FORUM_WEEKLY_COUNCIL=0
@@ -49,13 +50,16 @@ CLAWLOOP_CRON="${CLAWLOOP_CRON:-0 */3 * * *}"
 CLAWLOOP_THINKING="${CLAWLOOP_THINKING:-high}"
 CLAWLOOP_TIMEOUT_SECONDS="${CLAWLOOP_TIMEOUT_SECONDS:-1800}"
 LOOP_KPI_CRON="${LOOP_KPI_CRON:-0 8 * * 1}"
+MODEL_HEALTH_CRON="${MODEL_HEALTH_CRON:-0 */6 * * *}"
 GSD_BRIDGE_CRON="${GSD_BRIDGE_CRON:-*/10 * * * *}"
 FORUM_DAILY_CRON="${FORUM_DAILY_CRON:-15 9,17 * * *}"
 FORUM_WEEKLY_CRON="${FORUM_WEEKLY_CRON:-0 9 * * 1}"
 LOOP_INBOX_FILE="${LOOP_INBOX_FILE:-}"
 LOOP_QUEUE_FILE="${LOOP_QUEUE_FILE:-}"
 LOOP_KPI_FILE="${LOOP_KPI_FILE:-}"
+MODEL_HEALTH_FILE="${MODEL_HEALTH_FILE:-}"
 LOOP_LOCK_FILE="${LOOP_LOCK_FILE:-}"
+PROJECT_ACTIVITY_REGISTRY="${PROJECT_ACTIVITY_REGISTRY:-}"
 PROJECT_ROOT_CONFIRMED="$PROJECT_ROOT_FROM_ENV"
 
 usage() {
@@ -98,6 +102,8 @@ Options:
   --allow-no-loop-delivery           Allow loop jobs without delivery target
   --enable-loop-kpi                  Configure weekly KPI/report cron job
   --loop-kpi-cron <expr>             Cron expression for KPI report (default: 0 8 * * 1)
+  --enable-model-health              Configure periodic model health report cron job
+  --model-health-cron <expr>         Cron expression for model health report (default: 0 */6 * * *)
   --enable-gsd-bridge                Configure deterministic GSD->LOOP sync cron job
   --gsd-bridge-cron <expr>           Cron expression for GSD bridge (default: */10 * * * *)
   --forum-daily-cron <expr>          Cron expression for daily forum council (default: 15 9,17 * * *)
@@ -105,7 +111,9 @@ Options:
   --loop-inbox-file <path>           Shared proposal inbox (AutoClaw writes here)
   --loop-queue-file <path>           Shared execution queue (RalphClaw reads here)
   --loop-kpi-file <path>             KPI markdown output path
+  --model-health-file <path>         Model health markdown output path
   --loop-lock-file <path>            Shared lock file to prevent overlapping loop runs
+  --project-activity-registry <path> Registry file for /gsd-project-mode controls
   --no-dedupe-crons                  Do not remove duplicate cron jobs with same name
   --no-dedupe-plugin-paths           Do not prune duplicate plugin paths for same plugin id
   --ralphclaw-cron <expr>            Cron expression for RalphClaw (default: */15 * * * *)
@@ -313,7 +321,7 @@ write_plugin_local_config() {
     return 0
   fi
 
-  python3 - "$local_cfg" "${DISCORD_FORUM_TARGET:-}" "${LOOP_INBOX_FILE:-}" "${LOOP_QUEUE_FILE:-}" <<'PY'
+  python3 - "$local_cfg" "${DISCORD_FORUM_TARGET:-}" "${LOOP_INBOX_FILE:-}" "${LOOP_QUEUE_FILE:-}" "${PROJECT_ACTIVITY_REGISTRY:-}" "${PROJECT_KEY:-}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -322,6 +330,8 @@ cfg_path = Path(sys.argv[1])
 discord_forum_target = (sys.argv[2] or "").strip()
 loop_inbox_file = (sys.argv[3] or "").strip()
 loop_queue_file = (sys.argv[4] or "").strip()
+project_activity_registry = (sys.argv[5] or "").strip()
+project_key = (sys.argv[6] or "").strip()
 
 data = {}
 if cfg_path.exists():
@@ -339,6 +349,10 @@ if loop_inbox_file:
     data["loopInboxFile"] = loop_inbox_file
 if loop_queue_file:
     data["loopQueueFile"] = loop_queue_file
+if project_activity_registry:
+    data["projectActivityRegistry"] = project_activity_registry
+if project_key:
+    data["defaultProjectKey"] = project_key
 
 cfg_path.parent.mkdir(parents=True, exist_ok=True)
 cfg_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
@@ -724,11 +738,14 @@ resolve_default_loop_files() {
   if [[ -z "$LOOP_KPI_FILE" ]]; then
     LOOP_KPI_FILE="$PROJECT_ROOT/.openclaw/LOOP-KPI-WEEKLY.md"
   fi
+  if [[ -z "$MODEL_HEALTH_FILE" ]]; then
+    MODEL_HEALTH_FILE="$PROJECT_ROOT/.openclaw/LOOP-MODEL-HEALTH.md"
+  fi
 }
 
 validate_loop_project_scope() {
   local loops_enabled=0
-  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_MODEL_HEALTH" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
     loops_enabled=1
   fi
   [[ "$loops_enabled" -eq 1 ]] || return 0
@@ -747,12 +764,14 @@ ensure_loop_handoff_files() {
   ensure_parent "$LOOP_INBOX_FILE"
   ensure_parent "$LOOP_QUEUE_FILE"
   ensure_parent "$LOOP_KPI_FILE"
+  ensure_parent "$MODEL_HEALTH_FILE"
   ensure_parent "$LOOP_LOCK_FILE"
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     print_cmd touch "$LOOP_INBOX_FILE"
     print_cmd touch "$LOOP_QUEUE_FILE"
     print_cmd touch "$LOOP_KPI_FILE"
+    print_cmd touch "$MODEL_HEALTH_FILE"
     print_cmd touch "$LOOP_LOCK_FILE"
     return 0
   fi
@@ -815,6 +834,14 @@ Generated by scripts/loop-kpi-report.sh
 EOF
   fi
 
+  if [[ ! -f "$MODEL_HEALTH_FILE" ]]; then
+    cat > "$MODEL_HEALTH_FILE" <<EOF
+# Loop Model Health
+
+Generated by scripts/model-health-report.sh
+EOF
+  fi
+
   if [[ ! -f "$LOOP_LOCK_FILE" ]]; then
     : > "$LOOP_LOCK_FILE"
   fi
@@ -832,7 +859,7 @@ apply_preset_defaults() {
 
 validate_loop_delivery() {
   local loops_enabled=0
-  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_MODEL_HEALTH" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
     loops_enabled=1
   fi
   [[ "$loops_enabled" -eq 1 ]] || return 0
@@ -1006,6 +1033,12 @@ Run protocol:
 6) Write result + next step to queue docs, including recommended next GSD command.
 7) Report concise summary with changed files, verification, and gsd_next_action.
 
+Reporting format (required):
+- include a short "Model Trace" block in every report:
+  - configured_model: $LOOP_MODEL
+  - expected_provider: ${LOOP_MODEL%%/*}
+  - note: actual model can differ on fallback; see periodic model health report
+
 Verification gate (mandatory):
 - If verification fails:
   - NEVER mark item as done.
@@ -1086,6 +1119,12 @@ Run protocol:
 7) If a ready queue item is unblocked and GSD-aligned, implement one bounded increment end-to-end.
 8) Run verification and document outcome + next increment + gsd_next_action.
 
+Reporting format (required):
+- include a short "Model Trace" block in every report:
+  - configured_model: $LOOP_MODEL
+  - expected_provider: ${LOOP_MODEL%%/*}
+  - note: actual model can differ on fallback; see periodic model health report
+
 Epic mapping:
 - Treat each forum thread as one epic by default.
 - Use epic_id like: EPIC-<thread_id> (or stable slug when no thread id exists).
@@ -1120,6 +1159,30 @@ Then post concise summary:
 - blocked items
 - test/qa signal
 - top 3 next priorities
+EOF
+}
+
+build_model_health_message() {
+  cat <<EOF
+MODEL HEALTH REPORT (deterministic)
+
+Project key: $PROJECT_KEY
+
+Run deterministic report script:
+bash $BUNDLE_DIR/scripts/model-health-report.sh \
+  --project-root "$PROJECT_ROOT" \
+  --project-key "$PROJECT_KEY" \
+  --out "$MODEL_HEALTH_FILE"
+
+Then post concise summary:
+- jobs inspected
+- fallback/mismatch count
+- latest failures
+- recommended actions
+
+Rules:
+- Compare configured model vs actual model/provider from latest run history.
+- Never print raw secrets/tokens.
 EOF
 }
 
@@ -1282,6 +1345,7 @@ configure_autonomous_loops() {
   local autoclaw_job_name="Kai AutoClaw [$PROJECT_KEY]"
   local watchdog_job_name="Kai RalphClaw Watchdog [$PROJECT_KEY]"
   local kpi_job_name="Kai Loop KPI Weekly [$PROJECT_KEY]"
+  local model_health_job_name="Kai Model Health [$PROJECT_KEY]"
   local gsd_bridge_job_name="Kai GSD Bridge [$PROJECT_KEY]"
   local forum_daily_job_name="Kai Forum Council Daily [$PROJECT_KEY]"
   local forum_weekly_job_name="Kai Forum Council Weekly [$PROJECT_KEY]"
@@ -1322,6 +1386,15 @@ configure_autonomous_loops() {
       "600"
   fi
 
+  if [[ "$ENABLE_MODEL_HEALTH" -eq 1 ]]; then
+    upsert_loop_cron_job \
+      "$model_health_job_name" \
+      "$MODEL_HEALTH_CRON" \
+      "$(build_model_health_message)" \
+      "low" \
+      "600"
+  fi
+
   if [[ "$ENABLE_GSD_BRIDGE" -eq 1 ]]; then
     upsert_loop_cron_job \
       "$gsd_bridge_job_name" \
@@ -1348,6 +1421,164 @@ configure_autonomous_loops() {
       "medium" \
       "1800"
   fi
+}
+
+build_project_activity_specs() {
+  local -a specs=()
+  local ralphclaw_job_name="Kai RalphClaw [$PROJECT_KEY]"
+  local autoclaw_job_name="Kai AutoClaw [$PROJECT_KEY]"
+  local watchdog_job_name="Kai RalphClaw Watchdog [$PROJECT_KEY]"
+  local kpi_job_name="Kai Loop KPI Weekly [$PROJECT_KEY]"
+  local model_health_job_name="Kai Model Health [$PROJECT_KEY]"
+  local gsd_bridge_job_name="Kai GSD Bridge [$PROJECT_KEY]"
+  local forum_daily_job_name="Kai Forum Council Daily [$PROJECT_KEY]"
+  local forum_weekly_job_name="Kai Forum Council Weekly [$PROJECT_KEY]"
+
+  if [[ "$ENABLE_AUTOLOOP" -eq 1 ]]; then
+    specs+=("ralphclaw|$ralphclaw_job_name|$AUTOLOOP_CRON|*/15 * * * *")
+  fi
+  if [[ "$ENABLE_CLAWLOOP" -eq 1 ]]; then
+    specs+=("autoclaw|$autoclaw_job_name|$CLAWLOOP_CRON|0 */3 * * *")
+  fi
+  if [[ "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 ]]; then
+    specs+=("watchdog|$watchdog_job_name|*/20 * * * *|*/30 * * * *")
+  fi
+  if [[ "$ENABLE_LOOP_KPI" -eq 1 ]]; then
+    specs+=("kpi|$kpi_job_name|$LOOP_KPI_CRON|$LOOP_KPI_CRON")
+  fi
+  if [[ "$ENABLE_MODEL_HEALTH" -eq 1 ]]; then
+    specs+=("model_health|$model_health_job_name|$MODEL_HEALTH_CRON|$MODEL_HEALTH_CRON")
+  fi
+  if [[ "$ENABLE_GSD_BRIDGE" -eq 1 ]]; then
+    specs+=("gsd_bridge|$gsd_bridge_job_name|$GSD_BRIDGE_CRON|*/20 * * * *")
+  fi
+  if [[ "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 ]]; then
+    specs+=("forum_daily|$forum_daily_job_name|$FORUM_DAILY_CRON|$FORUM_DAILY_CRON")
+  fi
+  if [[ "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+    specs+=("forum_weekly|$forum_weekly_job_name|$FORUM_WEEKLY_CRON|$FORUM_WEEKLY_CRON")
+  fi
+
+  printf '%s\n' "${specs[@]}"
+}
+
+update_project_activity_registry() {
+  [[ "$loops_enabled_runtime" -eq 1 ]] || return 0
+  [[ -n "$PROJECT_KEY" ]] || return 0
+
+  local registry_path="${PROJECT_ACTIVITY_REGISTRY:-$OPENCLAW_DIR/cgsd-project-activity.json}"
+  PROJECT_ACTIVITY_REGISTRY="$registry_path"
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    print_cmd "# update project activity registry: $registry_path"
+    return 0
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    warn "python3 not found; skipping project activity registry write"
+    return 0
+  fi
+
+  local -a specs=()
+  mapfile -t specs < <(build_project_activity_specs || true)
+  if [[ "${#specs[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  local -a job_args=()
+  local spec key name high medium cron_id
+  for spec in "${specs[@]}"; do
+    IFS='|' read -r key name high medium <<<"$spec"
+    cron_id="$(resolve_cron_ids_by_name "$name" 2>/dev/null | head -n 1 || true)"
+    if [[ -z "$cron_id" ]]; then
+      warn "Skipping registry entry (cron id missing): $name"
+      continue
+    fi
+    job_args+=("$key|$name|$cron_id|$high|$medium")
+  done
+
+  if [[ "${#job_args[@]}" -eq 0 ]]; then
+    warn "No cron jobs found for project activity registry; skipping."
+    return 0
+  fi
+
+  python3 - "$registry_path" "$PROJECT_KEY" "$PROJECT_ROOT" "$LOOP_CHANNEL" "$LOOP_TARGET" "$DISCORD_FORUM_TARGET" "${job_args[@]}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+registry_path = Path(sys.argv[1]).expanduser()
+project_key = (sys.argv[2] or "").strip()
+project_root = (sys.argv[3] or "").strip()
+loop_channel = (sys.argv[4] or "").strip()
+loop_target = (sys.argv[5] or "").strip()
+forum_target = (sys.argv[6] or "").strip()
+job_specs = sys.argv[7:]
+
+data = {}
+if registry_path.exists():
+    try:
+        loaded = json.loads(registry_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            data = loaded
+    except Exception:
+        data = {}
+
+if not isinstance(data.get("projects"), dict):
+    data["projects"] = {}
+if not isinstance(data.get("channelProjectMap"), dict):
+    data["channelProjectMap"] = {}
+if not isinstance(data.get("version"), int):
+    data["version"] = 1
+
+jobs = []
+for spec in job_specs:
+    parts = spec.split("|", 4)
+    if len(parts) != 5:
+        continue
+    key, name, job_id, high_cron, medium_cron = [p.strip() for p in parts]
+    if not key or not name or not job_id:
+        continue
+    if not medium_cron:
+        medium_cron = high_cron
+    jobs.append(
+        {
+            "key": key,
+            "name": name,
+            "id": job_id,
+            "modes": {
+                "off": {"enabled": False},
+                "medium": {"enabled": True, "cron": medium_cron},
+                "high": {"enabled": True, "cron": high_cron},
+            },
+        }
+    )
+
+project = data["projects"].get(project_key)
+if not isinstance(project, dict):
+    project = {}
+
+project["projectKey"] = project_key
+project["projectRoot"] = project_root
+project["currentMode"] = project.get("currentMode") or "high"
+project["delivery"] = {
+    "channel": loop_channel,
+    "target": loop_target,
+    "forumTarget": forum_target,
+}
+project["jobs"] = jobs
+data["projects"][project_key] = project
+
+if loop_target and loop_channel == "discord":
+    data["channelProjectMap"][loop_target] = project_key
+if forum_target:
+    data["channelProjectMap"][forum_target] = project_key
+
+registry_path.parent.mkdir(parents=True, exist_ok=True)
+registry_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+PY
+
+  log "Updated project activity registry: $registry_path"
 }
 
 run_interactive_wizard() {
@@ -1440,6 +1671,7 @@ run_interactive_wizard() {
     prompt_value LOOP_INBOX_FILE "Loop inbox file (AutoClaw proposals)" "$LOOP_INBOX_FILE"
     prompt_value LOOP_QUEUE_FILE "Loop queue file (RalphClaw execution)" "$LOOP_QUEUE_FILE"
     prompt_value LOOP_KPI_FILE "Loop KPI output file" "$LOOP_KPI_FILE"
+    prompt_value MODEL_HEALTH_FILE "Loop model health output file" "$MODEL_HEALTH_FILE"
     prompt_value LOOP_LOCK_FILE "Loop worker lock file (prevents overlapping runs)" "$LOOP_LOCK_FILE"
     prompt_value LOOP_MODEL "Loop model id" "$LOOP_MODEL"
     prompt_value LOOP_AGENT "Loop agent id" "$LOOP_AGENT"
@@ -1462,6 +1694,10 @@ run_interactive_wizard() {
     prompt_yes_no ENABLE_LOOP_KPI "Enable weekly loop KPI report job?" "$ENABLE_LOOP_KPI"
     if [[ "$ENABLE_LOOP_KPI" -eq 1 ]]; then
       prompt_value LOOP_KPI_CRON "Weekly KPI cron expression" "$LOOP_KPI_CRON"
+    fi
+    prompt_yes_no ENABLE_MODEL_HEALTH "Enable periodic model health report job?" "$ENABLE_MODEL_HEALTH"
+    if [[ "$ENABLE_MODEL_HEALTH" -eq 1 ]]; then
+      prompt_value MODEL_HEALTH_CRON "Model health cron expression" "$MODEL_HEALTH_CRON"
     fi
     prompt_yes_no ENABLE_GSD_BRIDGE "Enable deterministic GSD bridge job?" "$ENABLE_GSD_BRIDGE"
     if [[ "$ENABLE_GSD_BRIDGE" -eq 1 ]]; then
@@ -1514,6 +1750,8 @@ run_interactive_wizard() {
   ralphclaw subagents parallel: $RALPHCLAW_SUBAGENTS_PARALLEL
   enable loop kpi: $ENABLE_LOOP_KPI
   loop kpi cron: $LOOP_KPI_CRON
+  enable model health: $ENABLE_MODEL_HEALTH
+  model health cron: $MODEL_HEALTH_CRON
   enable gsd bridge: $ENABLE_GSD_BRIDGE
   gsd bridge cron: $GSD_BRIDGE_CRON
   enable forum daily council: $ENABLE_FORUM_DAILY_COUNCIL
@@ -1523,6 +1761,7 @@ run_interactive_wizard() {
   loop inbox file: ${LOOP_INBOX_FILE:-<auto>}
   loop queue file: ${LOOP_QUEUE_FILE:-<auto>}
   loop kpi file: ${LOOP_KPI_FILE:-<auto>}
+  model health file: ${MODEL_HEALTH_FILE:-<auto>}
 SUMMARY
 
   local proceed=1
@@ -1727,7 +1966,7 @@ build_saved_install_args() {
   fi
 
   local loops_enabled=0
-  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+  if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_MODEL_HEALTH" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
     loops_enabled=1
   fi
 
@@ -1739,6 +1978,7 @@ build_saved_install_args() {
     [[ "$ENABLE_CLAWLOOP" -eq 1 ]] && _out_ref+=(--enable-autoclaw)
     [[ "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 ]] && _out_ref+=(--enable-ralphclaw-watchdog)
     [[ "$ENABLE_LOOP_KPI" -eq 1 ]] && _out_ref+=(--enable-loop-kpi)
+    [[ "$ENABLE_MODEL_HEALTH" -eq 1 ]] && _out_ref+=(--enable-model-health)
     [[ "$ENABLE_GSD_BRIDGE" -eq 1 ]] && _out_ref+=(--enable-gsd-bridge)
     [[ "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 ]] && _out_ref+=(--enable-forum-daily-council)
     [[ "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]] && _out_ref+=(--enable-forum-weekly-council)
@@ -1753,13 +1993,16 @@ build_saved_install_args() {
       --ralphclaw-cron "$AUTOLOOP_CRON"
       --autoclaw-cron "$CLAWLOOP_CRON"
       --loop-kpi-cron "$LOOP_KPI_CRON"
+      --model-health-cron "$MODEL_HEALTH_CRON"
       --gsd-bridge-cron "$GSD_BRIDGE_CRON"
       --forum-daily-cron "$FORUM_DAILY_CRON"
       --forum-weekly-cron "$FORUM_WEEKLY_CRON"
       --loop-inbox-file "$LOOP_INBOX_FILE"
       --loop-queue-file "$LOOP_QUEUE_FILE"
       --loop-kpi-file "$LOOP_KPI_FILE"
+      --model-health-file "$MODEL_HEALTH_FILE"
       --loop-lock-file "$LOOP_LOCK_FILE"
+      --project-activity-registry "$PROJECT_ACTIVITY_REGISTRY"
     )
 
     if [[ -n "$LOOP_CHANNEL" ]]; then
@@ -1896,6 +2139,7 @@ while [[ $# -gt 0 ]]; do
     --enable-ralphclaw) ENABLE_AUTOLOOP=1; shift ;;
     --enable-autoclaw) ENABLE_CLAWLOOP=1; shift ;;
     --enable-ralphclaw-watchdog) ENABLE_AUTOLOOP_WATCHDOG=1; shift ;;
+    --enable-model-health) ENABLE_MODEL_HEALTH=1; shift ;;
     --enable-forum-daily-council) ENABLE_FORUM_DAILY_COUNCIL=1; shift ;;
     --enable-forum-weekly-council) ENABLE_FORUM_WEEKLY_COUNCIL=1; shift ;;
     --project-root) PROJECT_ROOT="${2:-}"; PROJECT_ROOT_CONFIRMED=1; shift 2 ;;
@@ -1916,6 +2160,7 @@ while [[ $# -gt 0 ]]; do
     --allow-no-loop-delivery) ALLOW_NO_LOOP_DELIVERY=1; shift ;;
     --enable-loop-kpi) ENABLE_LOOP_KPI=1; shift ;;
     --loop-kpi-cron) LOOP_KPI_CRON="${2:-}"; shift 2 ;;
+    --model-health-cron) MODEL_HEALTH_CRON="${2:-}"; shift 2 ;;
     --enable-gsd-bridge) ENABLE_GSD_BRIDGE=1; shift ;;
     --gsd-bridge-cron) GSD_BRIDGE_CRON="${2:-}"; shift 2 ;;
     --forum-daily-cron) FORUM_DAILY_CRON="${2:-}"; shift 2 ;;
@@ -1923,7 +2168,9 @@ while [[ $# -gt 0 ]]; do
     --loop-inbox-file) LOOP_INBOX_FILE="${2:-}"; shift 2 ;;
     --loop-queue-file) LOOP_QUEUE_FILE="${2:-}"; shift 2 ;;
     --loop-kpi-file) LOOP_KPI_FILE="${2:-}"; shift 2 ;;
+    --model-health-file) MODEL_HEALTH_FILE="${2:-}"; shift 2 ;;
     --loop-lock-file) LOOP_LOCK_FILE="${2:-}"; shift 2 ;;
+    --project-activity-registry) PROJECT_ACTIVITY_REGISTRY="${2:-}"; shift 2 ;;
     --no-dedupe-crons) DEDUPE_CRON_JOBS=0; shift ;;
     --no-dedupe-plugin-paths) DEDUPE_PLUGIN_PATHS=0; shift ;;
     --ralphclaw-cron) AUTOLOOP_CRON="${2:-}"; shift 2 ;;
@@ -1996,13 +2243,14 @@ if ! [[ "$RALPHCLAW_SUBAGENTS_PARALLEL" =~ ^[0-9]+$ ]] || [[ "$RALPHCLAW_SUBAGEN
 fi
 
 CONFIG_PATH="${CONFIG_PATH:-$OPENCLAW_DIR/openclaw.json}"
+PROJECT_ACTIVITY_REGISTRY="${PROJECT_ACTIVITY_REGISTRY:-$OPENCLAW_DIR/cgsd-project-activity.json}"
 
 validate_loop_project_scope
 resolve_loop_project_identity
 resolve_default_loop_files
 
 loops_enabled_runtime=0
-if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_MODEL_HEALTH" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
   loops_enabled_runtime=1
 fi
 
@@ -2027,19 +2275,23 @@ log "Skill destination: $SKILL_DEST"
 log "Plugin source: $PLUGIN_SRC"
 log "Plugin destination: $PLUGIN_PATH"
 log "Config path: $CONFIG_PATH"
-if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_MODEL_HEALTH" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
   log "Project root: $PROJECT_ROOT"
   log "Project key: $PROJECT_KEY"
   log "Loop inbox: $LOOP_INBOX_FILE"
   log "Loop queue: $LOOP_QUEUE_FILE"
   log "Loop KPI file: $LOOP_KPI_FILE"
+  log "Model health file: $MODEL_HEALTH_FILE"
   log "Discord forum target (plugin): ${DISCORD_FORUM_TARGET:-<none>}"
   log "Discord slash allowFrom entry: ${DISCORD_SLASH_ALLOW_FROM:-<none>}"
   log "Loop lock file: $LOOP_LOCK_FILE"
   log "RalphClaw multi-agent: $ENABLE_RALPHCLAW_MULTI_AGENT"
   log "RalphClaw subagents parallel: $RALPHCLAW_SUBAGENTS_PARALLEL"
+  log "Model health enabled: $ENABLE_MODEL_HEALTH"
+  log "Model health cron: $MODEL_HEALTH_CRON"
   log "GSD bridge enabled: $ENABLE_GSD_BRIDGE"
   log "GSD bridge cron: $GSD_BRIDGE_CRON"
+  log "Project activity registry: $PROJECT_ACTIVITY_REGISTRY"
 fi
 
 install_tree "$SKILL_SRC" "$SKILL_DEST"
@@ -2051,11 +2303,13 @@ if [[ "$RESTART_GATEWAY" -eq 1 ]]; then
   restart_gateway_best_effort
 fi
 
-if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
+if [[ "$ENABLE_AUTOLOOP" -eq 1 || "$ENABLE_CLAWLOOP" -eq 1 || "$ENABLE_AUTOLOOP_WATCHDOG" -eq 1 || "$ENABLE_LOOP_KPI" -eq 1 || "$ENABLE_MODEL_HEALTH" -eq 1 || "$ENABLE_GSD_BRIDGE" -eq 1 || "$ENABLE_FORUM_DAILY_COUNCIL" -eq 1 || "$ENABLE_FORUM_WEEKLY_COUNCIL" -eq 1 ]]; then
   log "Ensuring loop handoff files"
   ensure_loop_handoff_files
   log "Configuring autonomous loop workers"
   configure_autonomous_loops
+  log "Registering project activity controls"
+  update_project_activity_registry
 fi
 
 persist_install_state
@@ -2079,6 +2333,7 @@ Loop mode (optional):
   --enable-ralphclaw (default: $AUTOLOOP_CRON)
   --enable-autoclaw (default: $CLAWLOOP_CRON)
   --enable-loop-kpi (default: $LOOP_KPI_CRON)
+  --enable-model-health (default cron: $MODEL_HEALTH_CRON)
   --enable-gsd-bridge (default cron: $GSD_BRIDGE_CRON)
   --enable-forum-daily-council (default cron: $FORUM_DAILY_CRON)
   --enable-forum-weekly-council (default cron: $FORUM_WEEKLY_CRON)
@@ -2087,6 +2342,8 @@ Loop mode (optional):
   --preset generic
   --loop-max-files $LOOP_MAX_FILES
   --loop-lock-file $LOOP_LOCK_FILE
+  --model-health-file $MODEL_HEALTH_FILE
+  --project-activity-registry $PROJECT_ACTIVITY_REGISTRY
   --ralphclaw-multi-agent (parallel: $RALPHCLAW_SUBAGENTS_PARALLEL)
   --ralphclaw-subagents-parallel <n>
   --loop-channel/--loop-target for announcements
@@ -2094,6 +2351,11 @@ Loop mode (optional):
   --discord-forum-target <id> for /gsd-new-epic thread creation
   --discord-slash-allow-from <id|*> for slash-command sender authorization
   --allow-no-loop-delivery (if you intentionally run silently)
+
+Chat controls (plugin):
+  /gsd-project-mode status
+  /gsd-project-mode high
+  /gsd-project-mode <project-key> medium
 NEXT
 
 print_gsd_bootstrap_guidance "$PROJECT_ROOT" "$SKILL_DEST/bin/gsd-tools"

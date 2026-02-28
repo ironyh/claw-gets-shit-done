@@ -6,6 +6,7 @@ Packaged GSD workflow for OpenClaw with:
 
 - `skills/claw-gets-shit-done` (upstream-synced GSD wrapper)
 - `plugins/gsd-command-aliases` (`/gsd-add-todo`, `/gsd-plan-phase`, etc.)
+- per-project activity control via `/gsd-project-mode` (`off|medium|high`)
 - `install.sh`, `update.sh`, `doctor.sh`, `uninstall.sh`
 
 This bundle is built to handle different OpenClaw setups (home dirs, workspace installs, custom paths).
@@ -63,7 +64,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ironyh/claw-gets-shit-done/m
   --preset generic \
   --project-root /path/to/project \
   --enable-ralphclaw --ralphclaw-multi-agent --ralphclaw-subagents-parallel 3 \
-  --enable-autoclaw --enable-ralphclaw-watchdog --enable-loop-kpi \
+  --enable-autoclaw --enable-ralphclaw-watchdog --enable-loop-kpi --enable-model-health \
   --loop-channel discord --loop-target <target_id>
 ```
 
@@ -138,7 +139,7 @@ Install CGSD from https://github.com/ironyh/claw-gets-shit-done with:
 --preset generic
 --project-root /path/to/project
 --enable-ralphclaw --ralphclaw-multi-agent --ralphclaw-subagents-parallel 3
---enable-autoclaw --enable-ralphclaw-watchdog --enable-loop-kpi
+--enable-autoclaw --enable-ralphclaw-watchdog --enable-loop-kpi --enable-model-health
 --enable-forum-daily-council --enable-forum-weekly-council
 --loop-channel discord --loop-target <target_id>
 --discord-slash-allow-from "*"
@@ -197,6 +198,11 @@ Flow:
 - `Loop KPI Weekly`:
   - generates a weekly report from queue + git signal
   - tracks delivery/blocked/test-health trends
+
+- `Model Health`:
+  - generates deterministic configured-vs-actual model routing report
+  - surfaces fallback/mismatch and latest failures from cron history
+  - writes to `.openclaw/LOOP-MODEL-HEALTH.md` by default
 
 - `GSD Bridge`:
   - runs deterministic sync from GSD `.planning` todos into `LOOP-INBOX` + `LOOP-QUEUE`
@@ -493,7 +499,9 @@ Docs deployment:
    - OpenClaw version tested
    - Upstream GSD commit/tag
    - Breaking changes (if any)
-4. Smoke test on clean machine with `--profile home` (or run `./scripts/smoke-install.sh`).
+4. Smoke test on clean machine:
+   - `./scripts/smoke-install.sh`
+   - `./scripts/smoke-project-activity.sh`
 
 ## Attribution
 

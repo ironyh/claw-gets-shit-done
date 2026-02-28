@@ -27,6 +27,8 @@ The `gsd-command-aliases` plugin adds slash-friendly snake/hyphen aliases:
 - `/gsd-verify-work`
 - `/gsd-resume-work`
 - `/gsd-new-project`
+- `/gsd-project-mode`
+- `/gsd-project-bind`
 
 ## Intake Semantics
 
@@ -90,3 +92,32 @@ In plugin local config (`~/.openclaw/extensions/gsd-command-aliases/config.local
 - `discordForumTarget`
 - `workspaceDir`
 - `gsdToolsPath`
+- `projectActivityRegistry`
+
+## Project Activity Modes
+
+`/gsd-project-mode` controls how active autonomous workers should be per project.
+
+Examples:
+
+- `/gsd-project-mode status`
+- `/gsd-project-mode check all`
+- `/gsd-project-mode high`
+- `/gsd-project-mode badgeid medium`
+- `/gsd-project-mode set all off`
+
+Modes:
+
+- `off`: pause registered jobs for selected project(s)
+- `medium`: enable jobs with lower cadence profile
+- `high`: enable jobs with full cadence profile
+
+### `/gsd-project-bind`
+
+Bind current channel/thread context to a project key:
+
+- `/gsd-project-bind <project>`
+- `/gsd-project-bind show`
+- `/gsd-project-bind show all`
+
+Use this when `this` resolution is ambiguous across multiple projects.

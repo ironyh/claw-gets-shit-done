@@ -6,6 +6,7 @@
 ./doctor.sh
 openclaw gateway health
 openclaw cron list --all --json | jq '.jobs[] | {name: .name, cron: .schedule.expr}'
+cat /path/to/project/.openclaw/LOOP-MODEL-HEALTH.md
 ```
 
 ## Common Issues
@@ -24,6 +25,11 @@ openclaw cron list --all --json | jq '.jobs[] | {name: .name, cron: .schedule.ex
 - Check watchdog job and delivery channel permissions.
 - Verify the queue has `status: ready` items.
 
+5. Wrong model/provider used in runs
+- Run deterministic model report and inspect fallback column:
+  - `./scripts/model-health-report.sh --project-root /path/to/project --project-key <slug>`
+- If fallback is frequent, verify auth profile availability for the configured provider/model.
+
 ## Deterministic GSD Bridge
 
 Run once:
@@ -36,6 +42,38 @@ Expected output includes:
 - `discovered`
 - `added`
 - `skipped_existing`
+
+## Deterministic Model Health
+
+Run once:
+
+```bash
+./scripts/model-health-report.sh --project-root /path/to/project --project-key my-project
+```
+
+Expected report includes:
+- jobs inspected
+- fallback/mismatch count
+- latest failed runs
+- recommended actions
+
+## Project Activity Controls
+
+Inspect from chat:
+
+- `/gsd-project-mode status`
+- `/gsd-project-mode check all`
+
+Set intensity:
+
+- `/gsd-project-mode high`
+- `/gsd-project-mode <project-key> medium`
+- `/gsd-project-mode set all off`
+
+Bind channel/thread context to a project:
+
+- `/gsd-project-bind <project-key>`
+- `/gsd-project-bind show`
 
 ## TODO Intake Policy
 

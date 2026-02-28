@@ -30,6 +30,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ironyh/claw-gets-shit-done/m
   --enable-autoclaw \
   --enable-ralphclaw-watchdog \
   --enable-loop-kpi \
+  --enable-model-health \
   --enable-gsd-bridge \
   --enable-forum-daily-council \
   --enable-forum-weekly-council \
@@ -77,6 +78,23 @@ Install-time cron:
 ./install.sh --enable-gsd-bridge --gsd-bridge-cron "*/10 * * * *" --project-root /path/to/project
 ```
 
+## Deterministic Model Health
+
+Manual run:
+
+```bash
+./scripts/model-health-report.sh --project-root /path/to/project --project-key my-project
+```
+
+Install-time cron:
+
+```bash
+./install.sh --enable-model-health --model-health-cron "0 */6 * * *" --project-root /path/to/project
+```
+
+Default report path:
+- `/path/to/project/.openclaw/LOOP-MODEL-HEALTH.md`
+
 ## Update
 
 Normal path:
@@ -91,6 +109,7 @@ Behavior:
 - detached checkout (tag/sha refs)
 - reinstall + doctor check
 - reuses last saved install args from `~/.openclaw/cgsd-install-state.json` if no extra args are supplied
+- includes loop model-health settings (`--enable-model-health`, cron, output file) when previously configured
 
 ## Update With Explicit Install Args
 
@@ -103,3 +122,10 @@ Behavior:
 - `--allow-dirty`: allow update when tracked files are modified
 - `--no-saved-state`: ignore saved install args and use current/default installer behavior
 - `--ref <branch|tag|sha>`: pin update source
+
+## Quick Validation
+
+```bash
+./scripts/smoke-install.sh
+./scripts/smoke-project-activity.sh
+```

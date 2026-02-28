@@ -70,5 +70,7 @@ This keeps discuss outputs auditable and measurable instead of implicit in chat 
 ## Recommended Delivery Setup
 
 - Use a dedicated forum channel per project.
+- Use a dedicated text channel per project for control commands and worker summaries.
 - Route job output with `--discord-forum-thread <thread_id>` or channel target.
 - Keep one project key per project to avoid cron naming collisions.
+- Map Discord channel/thread -> project key in activity registry (auto-managed by installer) so `/gsd-project-mode this ...` resolves correctly.

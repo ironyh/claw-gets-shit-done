@@ -53,5 +53,8 @@ jobs:
       - name: Smoke test
         run: ./scripts/smoke-install.sh
 
+      - name: Smoke test (project activity)
+        run: ./scripts/smoke-project-activity.sh
+
       - name: Docs build
         run: mkdocs build --strict

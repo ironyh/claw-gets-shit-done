@@ -32,6 +32,7 @@ Main CI (`.github/workflows/ci.yml`) checks:
 - shellcheck linting
 - version guard
 - smoke install/uninstall flow
+- project activity registry smoke flow
 - docs build (`mkdocs build --strict`)
 
 GitHub Pages publish workflow:
@@ -45,6 +46,7 @@ GitHub Pages publish workflow:
 2. bump `VERSION` and `bundle.json`
 3. run `./scripts/check-version.sh`
 4. run `./scripts/smoke-install.sh`
-5. run `./build-release.sh`
-6. verify checksum file in `dist/`
-7. tag and publish release
+5. run `./scripts/smoke-project-activity.sh`
+6. run `./build-release.sh`
+7. verify checksum file in `dist/`
+8. tag and publish release

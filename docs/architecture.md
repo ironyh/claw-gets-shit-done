@@ -15,6 +15,7 @@ CGSD is intentionally opinionated:
 
 2. `plugins/gsd-command-aliases`
 - Slash command aliases and bridge helpers.
+- Includes `/gsd-project-mode` for per-project activity control.
 
 3. Loop workers
 - `RalphClaw`: executes queue tasks.
@@ -25,6 +26,11 @@ CGSD is intentionally opinionated:
 4. Bridge
 - `scripts/gsd-loop-bridge.sh` syncs `.planning` todos into loop files.
 - Uses idempotent IDs (`GSD-TODO-*`) to prevent duplicate intake.
+
+5. Project activity registry
+- Default file: `~/.openclaw/cgsd-project-activity.json`
+- Stores per-project cron job IDs and mode profiles (`off|medium|high`).
+- Maintains channel/thread -> project mapping for chat-driven controls.
 
 ## Data Flow
 
